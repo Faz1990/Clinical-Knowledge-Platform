@@ -1,0 +1,6 @@
+subscription_id    = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+project_name       = "clinical-platform"
+environment        = "dev"
+location           = "uksouth"
+databricks_sku     = "premium"
+databricks_cluster_id = "xxxx-xxxxxx-xxxxxxxx"  # fill in after creating a cluster in Databricks UI

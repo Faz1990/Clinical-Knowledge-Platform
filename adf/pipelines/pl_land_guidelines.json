@@ -1,0 +1,99 @@
+{
+    "name": "pl_land_guidelines",
+    "properties": {
+        "description": "Copy guideline PDFs from landing container to bronze-files (date-partitioned), then trigger Auto Loader notebook.",
+        "parameters": {
+            "pipeline_run_id": {
+                "type": "string",
+                "defaultValue": "@pipeline().RunId"
+            }
+        },
+        "variables": {
+            "ingestion_date": {
+                "type": "String"
+            }
+        },
+        "activities": [
+            {
+                "name": "set_ingestion_date",
+                "type": "SetVariable",
+                "typeProperties": {
+                    "variableName": "ingestion_date",
+                    "value": {
+                        "value": "@formatDateTime(utcNow(), 'yyyy/MM/dd')",
+                        "type": "Expression"
+                    }
+                }
+            },
+            {
+                "name": "copy_landing_to_bronze",
+                "type": "Copy",
+                "dependsOn": [
+                    {
+                        "activity": "set_ingestion_date",
+                        "dependencyConditions": ["Succeeded"]
+                    }
+                ],
+                "typeProperties": {
+                    "source": {
+                        "type": "BinarySource",
+                        "storeSettings": {
+                            "type": "AzureBlobFSReadSettings",
+                            "recursive": false,
+                            "wildcardFileName": "*.pdf"
+                        }
+                    },
+                    "sink": {
+                        "type": "BinarySink",
+                        "storeSettings": {
+                            "type": "AzureBlobFSWriteSettings",
+                            "copyBehavior": "PreserveHierarchy"
+                        }
+                    },
+                    "enableStaging": false
+                },
+                "inputs": [
+                    {
+                        "referenceName": "ds_binary_landing",
+                        "type": "DatasetReference"
+                    }
+                ],
+                "outputs": [
+                    {
+                        "referenceName": "ds_binary_bronze",
+                        "type": "DatasetReference",
+                        "parameters": {
+                            "folder_path": {
+                                "value": "@variables('ingestion_date')",
+                                "type": "Expression"
+                            }
+                        }
+                    }
+                ]
+            },
+            {
+                "name": "run_auto_loader",
+                "type": "DatabricksNotebook",
+                "dependsOn": [
+                    {
+                        "activity": "copy_landing_to_bronze",
+                        "dependencyConditions": ["Succeeded"]
+                    }
+                ],
+                "linkedServiceName": {
+                    "referenceName": "ls_databricks_clinical_platform",
+                    "type": "LinkedServiceReference"
+                },
+                "typeProperties": {
+                    "notebookPath": "/Repos/clinical-platform/notebooks/bronze/01_auto_loader_bronze",
+                    "baseParameters": {
+                        "pipeline_run_id": {
+                            "value": "@pipeline().parameters.pipeline_run_id",
+                            "type": "Expression"
+                        }
+                    }
+                }
+            }
+        ]
+    }
+}
