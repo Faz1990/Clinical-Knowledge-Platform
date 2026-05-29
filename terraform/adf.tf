@@ -29,9 +29,13 @@ resource "azurerm_data_factory_linked_service_data_lake_storage_gen2" "adls" {
 }
 
 # Linked service: Databricks (MSI auth)
-# NOTE: After first `terraform apply`, go to Databricks workspace admin console
-# and add the ADF MSI principal_id as a workspace user with "Can Restart" cluster permission.
+# Bootstrapping: only created once databricks_cluster_id is set in terraform.tfvars.
+# After first apply: create a cluster in the Databricks workspace UI, copy its cluster ID,
+# set databricks_cluster_id in terraform.tfvars, then re-apply.
+# Also add the ADF MSI principal_id as a workspace user with "Can Restart" permission.
 resource "azurerm_data_factory_linked_service_azure_databricks" "databricks" {
+  count = var.databricks_cluster_id != null ? 1 : 0
+
   name            = "ls_databricks_clinical_platform"
   data_factory_id = azurerm_data_factory.main.id
   adb_domain      = "https://${azurerm_databricks_workspace.main.workspace_url}"

@@ -27,6 +27,11 @@ output "databricks_workspace_id" {
   value = azurerm_databricks_workspace.main.id
 }
 
+output "access_connector_id" {
+  value       = azurerm_databricks_access_connector.main.id
+  description = "Use this as the CONNECTOR value in CREATE STORAGE CREDENTIAL in Unity Catalog"
+}
+
 output "key_vault_uri" {
   value = azurerm_key_vault.main.vault_uri
 }

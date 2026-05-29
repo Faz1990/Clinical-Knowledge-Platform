@@ -36,5 +36,6 @@ variable "allowed_ip_ranges" {
 
 variable "databricks_cluster_id" {
   type        = string
-  description = "Existing Databricks cluster ID for ADF linked service. Create a cluster in Databricks UI first, then paste its ID here."
+  default     = null
+  description = "Existing Databricks cluster ID for ADF linked service. Leave null on first apply (workspace doesn't exist yet). Create a cluster in the Databricks UI after first apply, then set this and re-apply."
 }
