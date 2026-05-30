@@ -1,0 +1,9 @@
+pyproject.toml
+src/clinical_platform/__init__.py
+src/clinical_platform/config.py
+src/clinical_platform/contract.py
+src/clinical_platform/scope.py
+src/clinical_platform.egg-info/PKG-INFO
+src/clinical_platform.egg-info/SOURCES.txt
+src/clinical_platform.egg-info/dependency_links.txt
+src/clinical_platform.egg-info/top_level.txt
