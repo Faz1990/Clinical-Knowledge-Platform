@@ -1,0 +1,11 @@
+clinical_platform:
+  target: dev
+  outputs:
+    dev:
+      type: databricks
+      catalog: clinical_platform
+      schema: gold
+      host: adb-7405614006245057.17.azuredatabricks.net
+      http_path: /sql/1.0/warehouses/38837e3baf7e2b92
+      token: "{{ env_var('DBT_DATABRICKS_TOKEN') }}"
+      threads: 4

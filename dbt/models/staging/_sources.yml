@@ -1,0 +1,22 @@
+version: 2
+
+sources:
+  - name: silver
+    database: clinical_platform
+    schema: silver
+    description: >
+      Validated, parsed guideline content — output of the two-gate contract pipeline.
+      Only rows that passed both the structural gate (provenance rules) and the
+      semantic gate (clinical_area in ACCEPTED_CLINICAL_AREAS) are present here.
+    tables:
+      - name: guidelines_parsed
+        description: "Parsed guideline documents. 7 rows for the type_2_diabetes corpus."
+        columns:
+          - name: content_hash
+            description: "SHA-256 of the raw file — natural key, unique per document version"
+          - name: guideline_id
+            description: "NICE guideline identifier (e.g. NG28, QS209, TA924)"
+          - name: clinical_area
+            description: "Confirmed scope — only type_2_diabetes passes the semantic contract gate"
+          - name: guideline_version
+            description: "Document version date extracted from filename (YYYY-MM-DD)"

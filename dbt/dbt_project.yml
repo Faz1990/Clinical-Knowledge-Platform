@@ -1,0 +1,22 @@
+name: clinical_platform
+version: '1.0.0'
+config-version: 2
+
+profile: clinical_platform
+
+model-paths:    ["models"]
+test-paths:     ["tests"]
+macro-paths:    ["macros"]
+analysis-paths: ["analyses"]
+seed-paths:     ["seeds"]
+snapshot-paths: ["snapshots"]
+
+target-path:   "target"
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  clinical_platform:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: table

@@ -1,0 +1,35 @@
+version: 2
+
+models:
+  - name: stg_guidelines_parsed
+    description: >
+      Staging view on silver.guidelines_parsed. Clean column select with no
+      transformations — transformation logic belongs in marts, not staging.
+    columns:
+      - name: content_hash
+        description: "SHA-256 natural key — unique per document version"
+        tests:
+          - unique
+          - not_null
+      - name: guideline_id
+        tests:
+          - not_null
+      - name: clinical_area
+        description: "Must be type_2_diabetes — the semantic gate enforces this upstream"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['type_2_diabetes']
+      - name: word_count
+        tests:
+          - not_null
+          - assert_word_count_positive
+      - name: page_count
+        tests:
+          - not_null
+      - name: source_url
+        tests:
+          - not_null
+      - name: guideline_version
+        tests:
+          - not_null

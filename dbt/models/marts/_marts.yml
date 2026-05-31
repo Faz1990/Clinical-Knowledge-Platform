@@ -1,0 +1,54 @@
+version: 2
+
+models:
+  - name: dim_guideline
+    description: >
+      Type-1 dimension at guideline_id grain. One row per NICE guideline.
+      Collapse rule: earliest guideline_version + title ASC selects the canonical
+      root document. NG28 (4 source documents) collapses to 1 row.
+      Type-2 SCD history is added in P4.
+    columns:
+      - name: guideline_id
+        description: "Natural key — NICE guideline identifier"
+        tests:
+          - unique
+          - not_null
+      - name: clinical_area
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['type_2_diabetes']
+      - name: current_version
+        tests:
+          - not_null
+      - name: title
+        tests:
+          - not_null
+
+  - name: fct_guideline_document
+    description: >
+      Fact table at document grain. 7 rows for the type_2_diabetes corpus.
+      NG28 has 4 documents as separate fact rows; all other guidelines have 1.
+    columns:
+      - name: content_hash
+        description: "Natural key at document grain — SHA-256 of raw file"
+        tests:
+          - unique
+          - not_null
+      - name: guideline_id
+        description: "Foreign key to dim_guideline"
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_guideline')
+              field: guideline_id
+      - name: word_count
+        tests:
+          - not_null
+          - assert_word_count_positive
+      - name: page_count
+        tests:
+          - not_null
+      - name: source_url
+        tests:
+          - not_null
