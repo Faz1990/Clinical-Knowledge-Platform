@@ -1,20 +1,37 @@
--- Type-1 dimension: one row per NICE guideline (guideline_id grain).
+-- Current-state dimension: one row per NICE guideline (guideline_id grain).
 --
--- Collapse rule: ORDER BY guideline_version ASC, title ASC
--- The earliest version + alphabetically-first title selects the canonical root
--- document rather than a supplement. For NG28 (4 docs), this yields
--- "Type 2 diabetes in adults: management" (the main guideline, version 2026-02-18)
--- rather than any of the supplements that share the same guideline_id.
+-- Collapse rule — three-tier priority:
+--   1. Primary document first: title WITHOUT ' — ' (supplements carry a subtitle after an em-dash)
+--   2. Latest guideline_version within the primary group (most recently updated version in force)
+--   3. title ASC as final tiebreaker (stable sort)
 --
--- Type-2 SCD history (tracking version changes over time) is added in P4.
--- This is a deliberate scope boundary: P3 = conformed Type-1 dims, P4 = history.
+-- Rationale for primary-document preference:
+--   NICE guidelines can have multiple associated documents per guideline_id — the main
+--   guidance document plus supplementary summaries and decision aids. The canonical
+--   entry for a dimension should be the root management document, not the most recent
+--   supplement. For NG28, this selects "Type 2 diabetes in adults: management" rather
+--   than "...management — GLP-1 and tirzepatide summary" (the most recently dated but
+--   supplementary). Single-document guidelines (QS209, TA924, PH38) are unaffected.
+--
+-- Why latest (DESC) within the primary group:
+--   This dimension feeds the SCD2 snapshot (dim_guideline_snapshot). The snapshot tracks
+--   "what version was current when." If we used earliest (ASC), a new primary update would
+--   never change the dim, making the snapshot inert after initial load. Latest = current
+--   authoritative state; snapshot = system of record for history.
+--
+-- P3 used pure ASC (earliest = original publication) for canonical root selection.
+-- P4 adds the primary-doc filter so that latest-within-primary gives both the right
+-- document AND current-state semantics for the snapshot.
 
 WITH ranked AS (
     SELECT
         *,
         ROW_NUMBER() OVER (
             PARTITION BY guideline_id
-            ORDER BY guideline_version ASC, title ASC
+            ORDER BY
+                CASE WHEN title NOT LIKE '% — %' THEN 0 ELSE 1 END ASC,
+                guideline_version DESC,
+                title ASC
         ) AS _rn
     FROM {{ ref('stg_guidelines_parsed') }}
 )
