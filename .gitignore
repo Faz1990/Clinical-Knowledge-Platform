@@ -24,6 +24,3 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-# Local Claude Code config — not project code
-.claude/
-CLAUDE.md
