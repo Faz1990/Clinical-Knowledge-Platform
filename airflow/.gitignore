@@ -1,0 +1,9 @@
+logs/
+.env
+*.db
+*.pid
+airflow.cfg
+webserver_config.py
+standalone_admin_password.txt
+__pycache__/
+*.pyc

@@ -1,0 +1,11 @@
+# Install in WSL Ubuntu with the Airflow constraints file to avoid resolver conflicts:
+#
+#   AIRFLOW_VERSION=2.9.3
+#   PYTHON_VERSION=3.10
+#   pip install -r requirements-airflow.txt \
+#     --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"
+
+apache-airflow==2.9.3
+apache-airflow-providers-databricks
+azure-storage-blob>=12.19.0
+azure-identity>=1.15.0
