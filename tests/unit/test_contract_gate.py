@@ -1,4 +1,3 @@
-import pytest
 from clinical_platform.contract import validate_row
 
 VALID_ROW = {

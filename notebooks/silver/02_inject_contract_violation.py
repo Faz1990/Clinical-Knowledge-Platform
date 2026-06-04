@@ -29,30 +29,34 @@ bronze_table = dbutils.widgets.get("bronze_table")
 DEMO_RUN_ID = "demo-contract-violation-001"
 
 # COMMAND ----------
-schema = T.StructType([
-    T.StructField("source_url",        T.StringType()),
-    T.StructField("retrieved_at",      T.TimestampType()),
-    T.StructField("content_hash",      T.StringType()),    # intentionally null
-    T.StructField("guideline_version", T.StringType()),    # intentionally malformed
-    T.StructField("pipeline_run_id",   T.StringType()),
-    T.StructField("ingest_timestamp",  T.TimestampType()),
-    T.StructField("guideline_id",      T.StringType()),    # intentionally lowercase
-    T.StructField("content",           T.BinaryType()),
-    T.StructField("length",            T.LongType()),      # intentionally 0
-])
+schema = T.StructType(
+    [
+        T.StructField("source_url", T.StringType()),
+        T.StructField("retrieved_at", T.TimestampType()),
+        T.StructField("content_hash", T.StringType()),  # intentionally null
+        T.StructField("guideline_version", T.StringType()),  # intentionally malformed
+        T.StructField("pipeline_run_id", T.StringType()),
+        T.StructField("ingest_timestamp", T.TimestampType()),
+        T.StructField("guideline_id", T.StringType()),  # intentionally lowercase
+        T.StructField("content", T.BinaryType()),
+        T.StructField("length", T.LongType()),  # intentionally 0
+    ]
+)
 
 bad_row = spark.createDataFrame(
-    [Row(
-        source_url        = "DEMO_BAD_ROW — safe to delete after P2 demo",
-        retrieved_at      = None,
-        content_hash      = None,           # → NULL_PROVENANCE:content_hash
-        guideline_version = "INVALID",      # → INVALID_VERSION_FORMAT
-        pipeline_run_id   = DEMO_RUN_ID,
-        ingest_timestamp  = None,
-        guideline_id      = "invalid-row",  # → INVALID_GUIDELINE_ID
-        content           = b"",
-        length            = 0,              # → EMPTY_CONTENT
-    )],
+    [
+        Row(
+            source_url="DEMO_BAD_ROW — safe to delete after P2 demo",
+            retrieved_at=None,
+            content_hash=None,  # → NULL_PROVENANCE:content_hash
+            guideline_version="INVALID",  # → INVALID_VERSION_FORMAT
+            pipeline_run_id=DEMO_RUN_ID,
+            ingest_timestamp=None,
+            guideline_id="invalid-row",  # → INVALID_GUIDELINE_ID
+            content=b"",
+            length=0,  # → EMPTY_CONTENT
+        )
+    ],
     schema=schema,
 )
 
@@ -63,10 +67,8 @@ print("Now run 01_bronze_to_silver with pipeline_run_id='demo-contract-violation
 print("Expected: row quarantined with 4 reason codes; Silver row count unchanged.")
 
 # COMMAND ----------
-display(
-    spark.sql(f"""
+display(spark.sql(f"""
         SELECT source_url, content_hash, guideline_version, guideline_id, length, pipeline_run_id
         FROM {bronze_table}
         WHERE pipeline_run_id = '{DEMO_RUN_ID}'
-    """)
-)
+    """))

@@ -1,20 +1,19 @@
 """
-Clinical Platform Pipeline — P5 Orchestration
+Clinical Platform Pipeline — Medallion orchestration with SP/OAuth M2M auth.
 
 Medallion pipeline: Bronze (Auto Loader) → Silver (contract gate) → Gold (dbt).
 P7/P9 tasks are EmptyOperator stubs showing the full pipeline shape.
 
-Auth — two adapters, one short-lived AD token:
-  - dbt task:               get_databricks_token() → DBT_DATABRICKS_TOKEN env var
-  - Databricks operators:   databricks_default Airflow connection (password = same token)
-  - Sensor:                 DefaultAzureCredential (az login; different resource, separate)
-Both dbt and the connection draw from DATABRICKS_TOKEN set at Airflow startup.
+Auth — two adapters, both using the clinical-platform-cicd SP:
+  - dbt task:               get_databricks_token() → MSAL client-credentials flow →
+                            short-lived token injected as DBT_DATABRICKS_TOKEN env var
+  - Databricks operators:   AIRFLOW_CONN_DATABRICKS_DEFAULT with SP extra fields;
+                            provider refreshes tokens automatically — no startup token
+  - Sensor:                 DefaultAzureCredential (Azure Storage resource; orthogonal
+                            to Databricks auth — legitimately separate)
 
-Prod-TODO (P6): swap personal AD token for SP/OAuth M2M client-credentials.
-  Changes needed: (1) get_databricks_token() body — replace az-minted token with
-  msal client_credentials call; (2) rebuild AIRFLOW_CONN_DATABRICKS_DEFAULT using
-  the SP client_id/secret stored in an Airflow connection or Key Vault.
-  Zero DAG topology changes. Introduced in P6 alongside CI/CD deploy secrets.
+Connection extra fields (apache-airflow-providers-databricks==6.7.0, verified):
+  azure_tenant_id, azure_client_id, azure_client_secret.
 """
 
 from __future__ import annotations
@@ -23,28 +22,32 @@ import os
 import subprocess
 from datetime import datetime, timedelta
 
-from airflow import DAG
+import msal
 from airflow.operators.empty import EmptyOperator
 from airflow.operators.python import PythonOperator
-from airflow.sensors.python import PythonSensor
 from airflow.providers.databricks.operators.databricks import DatabricksSubmitRunOperator
+from airflow.sensors.python import PythonSensor
+
+from airflow import DAG
 
 
 # ---------------------------------------------------------------------------
 # Auth — adapter 1 of 2 (dbt).
-# Prod-TODO (P6): replace body with msal client_credentials for SP/OAuth M2M.
-# Databricks operators use the databricks_default connection (adapter 2), not this.
+# SP/OAuth M2M via MSAL client-credentials. Databricks operators use the
+# databricks_default connection (adapter 2) with its own SP token refresh.
 # ---------------------------------------------------------------------------
 def get_databricks_token() -> str:
-    token = os.environ.get("DATABRICKS_TOKEN")
-    if not token:
+    app = msal.ConfidentialClientApplication(
+        client_id=os.environ["AZURE_CLIENT_ID"],
+        client_credential=os.environ["AZURE_CLIENT_SECRET"],
+        authority=f"https://login.microsoftonline.com/{os.environ['AZURE_TENANT_ID']}",
+    )
+    result = app.acquire_token_for_client(scopes=["2ff814a6-3304-4ab8-85cb-cd0e6f879c1d/.default"])
+    if "access_token" not in result:
         raise RuntimeError(
-            "DATABRICKS_TOKEN not set.\n"
-            "Mint: export DATABRICKS_TOKEN=$(az account get-access-token "
-            "--resource 2ff814a6-3304-4ab8-85cb-cd0e6f879c1d --query accessToken -o tsv)\n"
-            "then set AIRFLOW_CONN_DATABRICKS_DEFAULT per .env.example and restart."
+            f"MSAL token acquisition failed: {result.get('error_description', result)}"
         )
-    return token
+    return result["access_token"]
 
 
 # ---------------------------------------------------------------------------
@@ -54,19 +57,17 @@ def get_databricks_token() -> str:
 # If using direct upload: /Users/faisal1990@hotmail.co.uk/notebooks/...
 # Verify EXISTING_CLUSTER_ID is active; note: job cluster is the prod pattern.
 # ---------------------------------------------------------------------------
-DATABRICKS_HOST     = "adb-7405614006245057.17.azuredatabricks.net"
+DATABRICKS_HOST = "adb-7405614006245057.17.azuredatabricks.net"
 EXISTING_CLUSTER_ID = "0529-152429-s8benrb4"
 
 BRONZE_NOTEBOOK = "/Workspace/clinical-knowledge-platform/bronze/01_auto_loader_bronze"
 
 SILVER_NOTEBOOK = "/Workspace/clinical-knowledge-platform/silver/01_bronze_to_silver"
 
-SOURCE_PATH     = "abfss://bronze-files@stclinpldev.dfs.core.windows.net/"
+SOURCE_PATH = "abfss://bronze-files@stclinpldev.dfs.core.windows.net/"
 SCHEMA_LOCATION = "abfss://autoloader-schema@stclinpldev.dfs.core.windows.net/"
 
-DBT_DIR = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "dbt")
-)
+DBT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "dbt"))
 DBT_BIN = "/home/faz/dbt-venv/bin/dbt"  # dbt isolated in its own venv in WSL
 
 
@@ -83,10 +84,8 @@ def _files_in_landing() -> bool:
     from azure.identity import DefaultAzureCredential
     from azure.storage.blob import BlobServiceClient
 
-    cred   = DefaultAzureCredential()
-    client = BlobServiceClient(
-        "https://stclinpldev.blob.core.windows.net", credential=cred
-    )
+    cred = DefaultAzureCredential()
+    client = BlobServiceClient("https://stclinpldev.blob.core.windows.net", credential=cred)
     blobs = list(client.get_container_client("bronze-files").list_blobs())
     return len(blobs) > 0
 
@@ -110,7 +109,7 @@ def _preflight_check(**context) -> None:
 
 # ---------------------------------------------------------------------------
 # dbt task: no capture_output — dbt streams directly to the Airflow task log.
-# Both pass ("27/27 PASS") and fail ("accepted_values failed") output is visible.
+# Both pass ("25/25 PASS") and fail ("accepted_values failed") output is visible.
 # dbt test failure raises CalledProcessError → task fails → pipeline stops.
 # This IS the contract gate showing up in orchestration.
 # ---------------------------------------------------------------------------
@@ -197,13 +196,13 @@ with DAG(
     run_dbt_gold = PythonOperator(
         task_id="run_dbt_gold",
         python_callable=_run_dbt_gold,
-        retries=1,              # absorbs serverless cold-start timeout on first query
+        retries=1,  # absorbs serverless cold-start timeout on first query
         retry_delay=timedelta(minutes=2),
     )
 
     # P7/P9 stubs — full pipeline shape declared; filled in later phases
-    embed_chunks    = EmptyOperator(task_id="embed_chunks")
-    run_ragas_eval  = EmptyOperator(task_id="run_ragas_eval")
+    embed_chunks = EmptyOperator(task_id="embed_chunks")
+    run_ragas_eval = EmptyOperator(task_id="run_ragas_eval")
     publish_metrics = EmptyOperator(task_id="publish_metrics")
 
     (

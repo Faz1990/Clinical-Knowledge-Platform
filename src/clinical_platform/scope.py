@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from .config import ACCEPTED_CLINICAL_AREAS
 
 

@@ -11,11 +11,15 @@ def test_ng17_type1_quarantined():
 
 
 def test_ng3_pregnancy_quarantined():
-    assert validate_scope({"expected_clinical_area": "diabetes_pregnancy"}) == ["INVALID_CLINICAL_AREA"]
+    assert validate_scope({"expected_clinical_area": "diabetes_pregnancy"}) == [
+        "INVALID_CLINICAL_AREA"
+    ]
 
 
 def test_ng18_children_quarantined():
-    assert validate_scope({"expected_clinical_area": "diabetes_children"}) == ["INVALID_CLINICAL_AREA"]
+    assert validate_scope({"expected_clinical_area": "diabetes_children"}) == [
+        "INVALID_CLINICAL_AREA"
+    ]
 
 
 def test_null_area_is_missing_manifest():
