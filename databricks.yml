@@ -1,0 +1,25 @@
+bundle:
+  name: clinical-knowledge-platform
+
+workspace:
+  host: https://adb-7405614006245057.17.azuredatabricks.net
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      root_path: /clinical-knowledge-platform
+
+  prod:
+    mode: production
+    workspace:
+      root_path: /clinical-knowledge-platform
+
+resources:
+  # No jobs defined — Airflow is the scheduler. DAB is used for notebook sync only.
+  # Add job resources here if moving to Databricks Workflows in a later phase.
+
+sync:
+  include:
+    - notebooks/**
