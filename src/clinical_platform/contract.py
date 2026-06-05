@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import re
 
 _SHA256 = re.compile(r"^[a-f0-9]{64}$")
