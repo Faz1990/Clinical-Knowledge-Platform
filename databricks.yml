@@ -16,9 +16,8 @@ targets:
     workspace:
       root_path: /clinical-knowledge-platform
 
-resources:
-  # No jobs defined — Airflow is the scheduler. DAB is used for notebook sync only.
-  # Add job resources here if moving to Databricks Workflows in a later phase.
+# No jobs defined — Airflow is the scheduler. DAB is used for notebook sync only.
+# Add job resources here if moving to Databricks Workflows in a later phase.
 
 sync:
   include:
