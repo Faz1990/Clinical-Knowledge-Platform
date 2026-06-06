@@ -1,19 +1,21 @@
 # Project State — Clinical Knowledge Platform
 
-**Last updated:** 2026-06-05
-**Current phase:** P7 — RAG serving layer (code complete; needs Azure OpenAI deployment + demo run)
+**Last updated:** 2026-06-06
+**Current phase:** P8 — RAGAS eval harness
 
 ---
 
 ## Current Objective
 
-Build the RAG serving layer: chunk → embed (Azure OpenAI) → store in pgvector → LangChain retrieval → LLM answer with resolvable citation to guideline version.
+Build the RAGAS eval harness: log `(question, retrieved_contexts, generated_answer)` triples, run faithfulness / answer-relevancy / context-precision / context-recall, output a baseline score table from a DAG run.
 
-Proof artifact: a clinical Q&A that returns an answer with a citation traceable to a specific `guideline_id` + `guideline_version` in `dim_guideline`.
+Proof artifact: baseline RAGAS score table logged from a DAG run.
+
+**The closing-the-loop story:** P7 caught a faithfulness failure manually (Finding 3). P8 turns that one-off catch into an automated gate — faithfulness metric flags the unsupported claim; context recall flags the retrieval miss that caused it.
 
 ---
 
-## Proven Facts (P1–P6 complete)
+## Proven Facts (P1–P7 complete)
 
 | Fact | Verified by |
 |---|---|
@@ -27,53 +29,72 @@ Proof artifact: a clinical Q&A that returns an answer with a citation traceable 
 | GitHub Actions CI gate: ruff + black + pytest, blocks bad PRs | `evidence/p6_ci_gate_blocked.png`, `evidence/p6_ci_gate_passed.png` |
 | GitHub Actions CD: `databricks bundle deploy` on merge to master | `evidence/p6_cd_deploy.png` |
 | UC grants applied for SP on all three schemas | `notebooks/admin/00_grant_sp_permissions.sql` |
+| 145 Gold chunks (type 2 diabetes corpus, 6 guideline versions) embedded into pgvector | `evidence/p7_chunking_proof.png` |
+| End-to-end cited Q&A — answer + `guideline_id` + `guideline_version` traceable to `dim_guideline` | `evidence/p7_qa_cited_answer.png` |
+| Faithfulness failure documented: numbers grounded, clinical logic fabricated; retrieval vocabulary mismatch identified | `docs/project_state.md` §P7 findings |
+| P7 PR merged to master through CI gate (ruff E501 + I001 caught and fixed) | `feat/p7-rag-serving-layer` PR |
 
 ---
 
-## P6 Open Item (carry into P7 if operator auth needed)
+## P7 Findings (carry into P8 as test cases)
 
-`databricks_default` Airflow connection not yet rebuilt with SP extra fields in the running Airflow instance. dbt auth path is closed. For interview: "dbt path uses MSAL; operator path uses the provider's built-in SP refresh once the connection is wired — extra fields are `azure_tenant_id`, `azure_client_id`, `azure_client_secret` (provider 6.7.0, verified)."
+**Finding 1 — Manifest CSV in Bronze (NULL `guideline_id`)**
+Auto Loader ingested `guidelines_manifest.csv` alongside PDFs → two NULL-keyed rows, correctly blocked at the Silver scope gate. NULL rows accumulate (not deduplicated) because `NULL = NULL` is false in SQL join logic. Structural fix: `pathGlobFilter "*.pdf"` on Auto Loader. Open item: confirm the Bronze MERGE `ON` clause.
 
----
+**Finding 2 — 7 Silver docs → 6 guideline versions in Gold (SCD2, not a gap)**
+Three guidelines dropped at Bronze→Silver scope gate (NG17, NG3, NG18). NG28 alone has three SCD2 versions (2026-02-18: 74 chunks, 2026-03-04: 4, 2026-05-11: 3). EXCEPT query confirms completeness — every Silver `(guideline_id, guideline_version)` pair present in Gold.
 
-## P7 Run Status
+**Finding 3 — Faithfulness failure (the headline; seeds P8)**
+Numbers grounded (53/58 mmol/mol verbatim in NG28 chunk 6). Clinical logic fabricated: answer said "dual therapy → third agent"; guideline says "intensify medicines / add a DPP-4 inhibitor" (section 1.25). **Root cause: retrieval vocabulary mismatch** — question vocabulary didn't surface the 1.25.x pathway chunks; the model filled the gap from training data. The correct content was in the corpus but not retrieved.
 
-Code exists and has been read. **P7 is not done until step 6 produces a screenshot.** "Written" is a claim; the cited answer running end-to-end is the proof.
-
-**Steps to proof artifact (in order):**
-1. Deploy Azure OpenAI resource — provision `text-embedding-3-small` + `gpt-4o` model deployments. Fill `AZURE_OPENAI_ENDPOINT` + `AZURE_OPENAI_KEY` in `.env`. Delete resource after screenshot to avoid ongoing cost.
-2. Run `notebooks/gold/03_silver_to_rag_chunks.py` in Databricks to populate Gold `rag_chunks` table.
-3. `docker-compose up -d` to start pgvector locally.
-4. Fill remaining `.env` vars (`DATABRICKS_TOKEN`, `DATABRICKS_HTTP_PATH`, `PGVECTOR_PASSWORD`). These go in the gitignored `.env` — do not commit.
-5. `python -m clinical_platform.embed` to embed all chunks into pgvector.
-6. `python demo/clinical_qa.py` — **screenshot the output** (answer + citations resolving to `guideline_id` + `guideline_version`). Verify the cited guideline actually contains the claim in the answer — a resolvable citation that points to the wrong chunk still fails. Stop here.
+Locked framing: *"Numbers grounded, clinical logic fabricated — the dangerous middle case RAG governance exists to catch. Caught it by reading the cited chunks. P8 automates this check."*
 
 ---
 
-## P7 Architecture
+## P6 Open Item (carried forward)
+
+`databricks_default` Airflow connection not yet rebuilt with SP extra fields in the running Airflow instance. dbt auth path is closed (MSAL). For interview: "dbt path uses MSAL; operator path uses the provider's built-in SP refresh once the connection is wired — extra fields are `azure_tenant_id`, `azure_client_id`, `azure_client_secret` (provider 6.7.0, verified)."
+
+---
+
+## P7 Open Items (carried forward)
+
+- `pathGlobFilter "*.pdf"` on Auto Loader — stop the manifest CSV at source
+- Confirm the Bronze MERGE `ON` clause — drop the "(or similar)" hedge on the idempotency story
+- `requirements-dev.txt` pin ruff + black to the same versions CI uses — close the local/CI version-skew loop
+- TA924 retrieved at 0.57 similarity on the HbA1c question — likely spurious; a reranker or metadata filter would remove it
+- Operator auth path (`databricks_default`) — documented, not wired in running Airflow
+
+---
+
+## P7 Architecture (locked)
 
 ```
-Silver table (guidelines_parsed — parsed_text lives here; dropped from dbt staging)
+Silver table (guidelines_parsed — parsed_text)
   ↓ notebooks/gold/03_silver_to_rag_chunks.py (500-word chunks, 50-word overlap)
 Gold table (rag_chunks — chunk_text + guideline_id + guideline_version + chunk_index)
   ↓ src/clinical_platform/embed.py — reads via Databricks SQL connector
-  ↓ Azure OpenAI text-embedding-3-small (1536-dim vectors)
-  ↓ pgvector on Docker (local) — HNSW cosine index
+  ↓ Azure OpenAI text-embedding-3-small (1536-dim)
+  ↓ pgvector on Docker port 5433 (5432 taken by host Postgres) — HNSW cosine index
   ↓ src/clinical_platform/retriever.py — cosine similarity, top-5
-  ↓ src/clinical_platform/qa.py — AzureChatOpenAI (gpt-4o, temp=0) + Citation dataclass
+  ↓ src/clinical_platform/qa.py — AzureChatOpenAI gpt-4o (temp=0) + Citation dataclass
   ↓ demo/clinical_qa.py → cited answer
 ```
 
-Citation must be resolvable: `guideline_id` + `guideline_version` on each returned chunk maps to a specific row in `dim_guideline`. Verify the cited guideline actually contains the claim — don't accept a resolvable-but-wrong citation.
+pgvector runs on `5433:5432` permanently — host Postgres owns 5432. This is in `docker-compose.yml` and `.env`.
 
 ---
 
-## P7 Key Decisions (locked)
+## P8 Setup
 
-- **pgvector on Postgres** — not Azure AI Search. Interview answer: "evaluated Azure AI Search; chose pgvector for relational integration and portability."
-- **LangChain** — thin glue layer only. No LangChain abstractions that obscure what's happening.
-- **Azure OpenAI** — same subscription as the rest of the platform.
-- **Corpus scope** — 10–15 NICE guidelines, one clinical area only (type 2 diabetes / hypertension / CKD — TBD at start of P7).
+**RAGAS metrics to implement:**
+- **Faithfulness** — atomic claim extraction vs. retrieved contexts. Catches Finding 3.
+- **Answer relevance** — does the answer address the question.
+- **Context precision / recall** — did retrieval surface the right chunks. Catches Finding A vocabulary mismatch (low recall: 1.25.x pathway not retrieved).
+
+**What it consumes:** `(question, retrieved_contexts, generated_answer)` triples — pipeline already produces these, just needs logging.
+
+**Scope:** light harness over a handful of curated Q/A pairs (include the diabetes dual-therapy question deliberately). Log a score table. Wire into the Airflow DAG. Do not gold-plate.
 
 ---
 
@@ -99,12 +120,19 @@ Citation must be resolvable: `guideline_id` + `guideline_version` on each return
 | Key Vault | `kv-clinpl-dev` — secret: `databricks-cicd-sp-secret` |
 | Storage account | `stclinpldev` |
 | Airflow provider | `apache-airflow-providers-databricks==6.7.0` |
+| Azure OpenAI resource | `aoai-clinical-platform-dev` — UK South — manual (not Terraform) |
+| Azure OpenAI endpoint | `https://aoai-clinical-platform-dev.openai.azure.com/` |
+| pgvector container | `clinical_pgvector` — port `5433:5432` |
 
 ---
 
 ## Locked Decisions (all phases)
 
 - **pgvector over Azure AI Search** — relational integration + portability.
+- **HNSW over IVFFlat** — no minimum corpus size requirement; correct for a small clinical corpus.
+- **`temperature=0` on GPT-4o** — determinism for a clinical tool; reproducibility is a property.
+- **LangChain confined to `qa.py`** — `store.py` and `retriever.py` are raw psycopg2 + OpenAI SDK.
+- **Separate `requirements-rag.txt`** — CI unit tests need no pgvector, OpenAI key, or Databricks connection.
 - **Airflow trigger-not-execute** — submits notebook runs to Databricks; does not run Spark locally.
 - **DAB for notebook sync, not replacing Airflow** — workspace layout reproducible from git; Airflow remains the scheduler.
 - **CI = lint + pytest, no live Databricks** — dbt runs in CD or locally; CI stays dependency-free.
