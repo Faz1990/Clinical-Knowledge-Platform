@@ -39,3 +39,28 @@ variable "databricks_cluster_id" {
   default     = null
   description = "Existing Databricks cluster ID for ADF linked service. Leave null on first apply (workspace doesn't exist yet). Create a cluster in the Databricks UI after first apply, then set this and re-apply."
 }
+
+variable "create_azure_postgres" {
+  type        = bool
+  default     = false
+  description = "Deploy Azure Database for PostgreSQL Flexible Server. Set true for cloud production deploy; dev uses Docker pgvector instead."
+}
+
+variable "postgres_admin_password" {
+  type        = string
+  default     = null
+  sensitive   = true
+  description = "Admin password for Azure PostgreSQL. Required when create_azure_postgres = true."
+}
+
+variable "create_azure_openai" {
+  type        = bool
+  default     = false
+  description = "Deploy Azure OpenAI resource with embedding + chat deployments. Set true to provision; dev uses the same endpoint via env vars."
+}
+
+variable "openai_location" {
+  type        = string
+  default     = "eastus"
+  description = "Region for Azure OpenAI. eastus has the broadest model coverage; override if quota is allocated elsewhere."
+}
