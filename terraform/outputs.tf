@@ -44,3 +44,14 @@ output "notebook_source_path" {
 output "notebook_schema_location" {
   value = "abfss://autoloader-schema@${azurerm_storage_account.adls.name}.dfs.core.windows.net/bronze_guidelines/"
 }
+
+output "openai_endpoint" {
+  value       = var.create_azure_openai ? azurerm_cognitive_account.openai[0].endpoint : null
+  description = "Set as AZURE_OPENAI_ENDPOINT in .env"
+}
+
+output "openai_key" {
+  value       = var.create_azure_openai ? azurerm_cognitive_account.openai[0].primary_access_key : null
+  sensitive   = true
+  description = "Set as AZURE_OPENAI_KEY in .env — retrieve with: terraform output -raw openai_key"
+}

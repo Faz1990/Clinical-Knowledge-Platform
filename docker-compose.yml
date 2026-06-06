@@ -1,0 +1,21 @@
+services:
+  pgvector:
+    image: pgvector/pgvector:pg16
+    container_name: clinical_pgvector
+    environment:
+      POSTGRES_DB: clinical_platform
+      POSTGRES_USER: clinical
+      POSTGRES_PASSWORD: ${PGVECTOR_PASSWORD}
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgvector_data:/var/lib/postgresql/data
+      - ./sql/init_pgvector.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clinical -d clinical_platform"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgvector_data:
