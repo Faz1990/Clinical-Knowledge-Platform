@@ -1,4 +1,4 @@
-"""Embedding pipeline: read Gold chunks from Databricks, embed via Azure OpenAI, write to pgvector."""
+"""Embedding pipeline: read Gold chunks, embed via Azure OpenAI, write to pgvector."""
 
 from __future__ import annotations
 
