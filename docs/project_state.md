@@ -112,13 +112,13 @@ pgvector runs on `5433:5432` permanently — host Postgres owns 5432. This is in
 
 | Item | Value |
 |---|---|
-| SP appId | `91171f7d-478d-4dfd-a6cb-33e0e2011b23` |
-| SP tenant | `5095ccc0-a03b-426e-999a-9a34539529ee` |
-| Databricks workspace | `adb-7405614006245057.17.azuredatabricks.net` |
-| SQL warehouse | `/sql/1.0/warehouses/38837e3baf7e2b92` |
-| All-purpose cluster | `0529-152429-s8benrb4` |
-| Key Vault | `kv-clinpl-dev` — secret: `databricks-cicd-sp-secret` |
-| Storage account | `stclinpldev` |
+| SP appId | `<SP_APP_ID>` |
+| SP tenant | `<TENANT_ID>` |
+| Databricks workspace | `<DATABRICKS_WORKSPACE_URL>` |
+| SQL warehouse | `<SQL_WAREHOUSE_HTTP_PATH>` |
+| All-purpose cluster | `<CLUSTER_ID>` |
+| Key Vault | `<KEY_VAULT_NAME>` — secret: `<SECRET_NAME>` |
+| Storage account | `<STORAGE_ACCOUNT_NAME>` |
 | Airflow provider | `apache-airflow-providers-databricks==6.7.0` |
 | Azure OpenAI resource | `aoai-clinical-platform-dev` — UK South — manual (not Terraform) |
 | Azure OpenAI endpoint | `https://aoai-clinical-platform-dev.openai.azure.com/` |
