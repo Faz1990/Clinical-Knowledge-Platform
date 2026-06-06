@@ -1,7 +1,7 @@
 # Project State — Clinical Knowledge Platform
 
 **Last updated:** 2026-06-05
-**Current phase:** P7 — RAG serving layer
+**Current phase:** P7 — RAG serving layer (code complete; needs Azure OpenAI deployment + demo run)
 
 ---
 
@@ -36,18 +36,35 @@ Proof artifact: a clinical Q&A that returns an answer with a citation traceable 
 
 ---
 
+## P7 Run Status
+
+Code exists and has been read. **P7 is not done until step 6 produces a screenshot.** "Written" is a claim; the cited answer running end-to-end is the proof.
+
+**Steps to proof artifact (in order):**
+1. Deploy Azure OpenAI resource — provision `text-embedding-3-small` + `gpt-4o` model deployments. Fill `AZURE_OPENAI_ENDPOINT` + `AZURE_OPENAI_KEY` in `.env`. Delete resource after screenshot to avoid ongoing cost.
+2. Run `notebooks/gold/03_silver_to_rag_chunks.py` in Databricks to populate Gold `rag_chunks` table.
+3. `docker-compose up -d` to start pgvector locally.
+4. Fill remaining `.env` vars (`DATABRICKS_TOKEN`, `DATABRICKS_HTTP_PATH`, `PGVECTOR_PASSWORD`). These go in the gitignored `.env` — do not commit.
+5. `python -m clinical_platform.embed` to embed all chunks into pgvector.
+6. `python demo/clinical_qa.py` — **screenshot the output** (answer + citations resolving to `guideline_id` + `guideline_version`). Verify the cited guideline actually contains the claim in the answer — a resolvable citation that points to the wrong chunk still fails. Stop here.
+
+---
+
 ## P7 Architecture
 
 ```
-Gold table (fact_guideline_section / RAG chunks)
-  ↓ chunking (already in dbt model or new step)
-  ↓ embed: Azure OpenAI text-embedding-3-small
-  ↓ pgvector (Postgres on Azure) — stores chunk + embedding + guideline_id + version
-  ↓ LangChain retriever (similarity search, top-k)
-  ↓ LLM (Azure OpenAI GPT-4o) → cited answer
+Silver table (guidelines_parsed — parsed_text lives here; dropped from dbt staging)
+  ↓ notebooks/gold/03_silver_to_rag_chunks.py (500-word chunks, 50-word overlap)
+Gold table (rag_chunks — chunk_text + guideline_id + guideline_version + chunk_index)
+  ↓ src/clinical_platform/embed.py — reads via Databricks SQL connector
+  ↓ Azure OpenAI text-embedding-3-small (1536-dim vectors)
+  ↓ pgvector on Docker (local) — HNSW cosine index
+  ↓ src/clinical_platform/retriever.py — cosine similarity, top-5
+  ↓ src/clinical_platform/qa.py — AzureChatOpenAI (gpt-4o, temp=0) + Citation dataclass
+  ↓ demo/clinical_qa.py → cited answer
 ```
 
-Citation must be resolvable: answer references `guideline_id` + `guideline_version` which maps to a row in `dim_guideline`.
+Citation must be resolvable: `guideline_id` + `guideline_version` on each returned chunk maps to a specific row in `dim_guideline`. Verify the cited guideline actually contains the claim — don't accept a resolvable-but-wrong citation.
 
 ---
 
