@@ -32,12 +32,16 @@ overlap = int(dbutils.widgets.get("overlap"))
 # MAGIC %md ### Step 1 — Define chunking UDF
 
 # COMMAND ----------
-_chunk_schema = T.ArrayType(T.StructType([
-    T.StructField("chunk_index", T.IntegerType()),
-    T.StructField("total_chunks", T.IntegerType()),
-    T.StructField("chunk_text", T.StringType()),
-    T.StructField("word_count", T.IntegerType()),
-]))
+_chunk_schema = T.ArrayType(
+    T.StructType(
+        [
+            T.StructField("chunk_index", T.IntegerType()),
+            T.StructField("total_chunks", T.IntegerType()),
+            T.StructField("chunk_text", T.StringType()),
+            T.StructField("word_count", T.IntegerType()),
+        ]
+    )
+)
 
 
 @F.pandas_udf(_chunk_schema)
@@ -62,15 +66,17 @@ def chunk_text(
                 break
             start += cs - ov
         total = len(chunks)
-        results.append([
-            {
-                "chunk_index": i,
-                "total_chunks": total,
-                "chunk_text": " ".join(c),
-                "word_count": len(c),
-            }
-            for i, c in enumerate(chunks)
-        ])
+        results.append(
+            [
+                {
+                    "chunk_index": i,
+                    "total_chunks": total,
+                    "chunk_text": " ".join(c),
+                    "word_count": len(c),
+                }
+                for i, c in enumerate(chunks)
+            ]
+        )
     return pd.Series(results)
 
 
@@ -97,28 +103,25 @@ df_chunked = df_silver.withColumn(
     ),
 )
 
-df_exploded = (
-    df_chunked.select(
-        "content_hash",
-        "guideline_id",
-        "guideline_version",
-        F.explode("_chunks").alias("_chunk"),
-    )
-    .select(
-        F.concat_ws(
-            "_",
-            F.col("content_hash"),
-            F.col("_chunk.chunk_index").cast("string"),
-        ).alias("chunk_id"),
-        "guideline_id",
-        "guideline_version",
-        "content_hash",
-        F.col("_chunk.chunk_index").alias("chunk_index"),
-        F.col("_chunk.total_chunks").alias("total_chunks"),
-        F.col("_chunk.chunk_text").alias("chunk_text"),
-        F.col("_chunk.word_count").alias("word_count"),
-        F.current_timestamp().alias("chunked_at"),
-    )
+df_exploded = df_chunked.select(
+    "content_hash",
+    "guideline_id",
+    "guideline_version",
+    F.explode("_chunks").alias("_chunk"),
+).select(
+    F.concat_ws(
+        "_",
+        F.col("content_hash"),
+        F.col("_chunk.chunk_index").cast("string"),
+    ).alias("chunk_id"),
+    "guideline_id",
+    "guideline_version",
+    "content_hash",
+    F.col("_chunk.chunk_index").alias("chunk_index"),
+    F.col("_chunk.total_chunks").alias("total_chunks"),
+    F.col("_chunk.chunk_text").alias("chunk_text"),
+    F.col("_chunk.word_count").alias("word_count"),
+    F.current_timestamp().alias("chunked_at"),
 )
 
 chunk_count = df_exploded.count()
@@ -129,8 +132,7 @@ print(f"Total chunks produced: {chunk_count} ({chunk_count / doc_count:.0f} avg 
 
 # COMMAND ----------
 (
-    df_exploded.write
-    .format("delta")
+    df_exploded.write.format("delta")
     .mode("overwrite")
     .option("overwriteSchema", "true")
     .saveAsTable(gold_table)

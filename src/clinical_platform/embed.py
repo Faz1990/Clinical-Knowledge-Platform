@@ -64,10 +64,7 @@ def run(batch_size: int = 50) -> None:
         texts = [c["chunk_text"] for c in batch]
         embeddings = _embed_batch(client, texts)
 
-        records = [
-            {**chunk, "embedding": emb}
-            for chunk, emb in zip(batch, embeddings)
-        ]
+        records = [{**chunk, "embedding": emb} for chunk, emb in zip(batch, embeddings)]
         written = upsert_chunks(records)
         total_written += written
         print(f"  Batch {i // batch_size + 1}: {written} chunks upserted")
@@ -81,5 +78,6 @@ def run(batch_size: int = 50) -> None:
 
 if __name__ == "__main__":
     from dotenv import load_dotenv
+
     load_dotenv()
     run()
