@@ -92,6 +92,17 @@ This is why the P6 SP has Contributor RBAC and can call the Databricks REST API,
 Attempted `GRANT CREATE VIEW ON SCHEMA clinical_platform.gold`. UC metastore v1.0 returns `PRIVILEGE_NOT_APPLICABLE_TO_ENTITY` — `CREATE VIEW` is not a valid schema-level privilege; it is implicitly covered by `CREATE TABLE`. Removing the line and relying on `CREATE TABLE` is sufficient.
 **Rule:** when a GRANT fails with `PRIVILEGE_NOT_APPLICABLE_TO_ENTITY`, the privilege doesn't exist at that securable level — check the UC privilege model for the object type before writing grants.
 
+### Precision is more reliable than recall when judge = generator (P8)
+In a RAGAS eval where GPT-4o both generates answers and judges them, recall is inflated by the same leniency that causes hallucinations — the judge over-credits paraphrases it would itself produce. In the P8 baseline: Q_P7 recall = 1.0 despite retrieval surfacing the wrong clinical scenario; Q_P7 faithfulness = 1.0 despite the answer containing the fabricated "third agent" bridge. Precision (rank-weighted AP, confirmed by interleaved test) scored correctly: 0.0 for clinical-vocab questions, 1.0 for guideline-vocab. **Rule:** when judge = generator, treat recall magnitudes as upper bounds and precision as the primary signal. Always read the generated answer directly — the metric alone is insufficient.
+
+### Unverified mechanism asserted as explanation (P8, recurring pattern)
+Three times in P8, an explanation was asserted without reading the source: (1) "almost certainly in chunk 9 or 10" for the first-line recommendation — required reading the actual chunk to confirm; (2) "garbled diagram/flowchart content" — PDF showed it was a bold-heading double-render, not a diagram; (3) "RAGAS joins contexts internally, need 0.2.x migration" — killed by a 5-minute interleaved AP test returning the exact closed-form value. All three were plausible inferences that a single observation disproved.
+**Rule:** "almost certainly," "likely," and "probably" are signals to run the confirming check before writing the claim. A wrong confident explanation is worse than acknowledging uncertainty.
+
+### Ground truth must be authored from observed chunk text, not recalled knowledge (P8)
+Initial Q3a/Q3b ground truth included a conditional ("if DPP-4 not suitable → SU/pio/insulin") that stitched two separate chunks without verifying the conditional was verbatim in either. The conditional turned out to be real (PDF pages 104–105 confirm the tiering), but the process was wrong — a plausible bridge was asserted before it was observed.
+**Rule:** every claim in a ground-truth reference answer must be traceable to a specific retrieved chunk. If the phrasing stitches two chunks, read both chunks and verify the linking conditional exists verbatim before writing it as ground truth.
+
 ### Global git ignore (Windows) is invisible to WSL git (P6)
 `.claude/` and `CLAUDE.md` were excluded via `core.excludesFile` in the Windows git global config. WSL git is a separate install with its own `~/.gitconfig` — it has no knowledge of the Windows global exclude. Files ignored in PowerShell were re-staged by WSL `git add .`.
 **Fix:** `.git/info/exclude` lives inside the repo's `.git/` folder, shared by both shells on disk. Add exclusions there, not to a global config. Works in PowerShell and WSL identically, never pushed.

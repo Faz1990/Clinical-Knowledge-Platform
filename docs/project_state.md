@@ -85,16 +85,49 @@ pgvector runs on `5433:5432` permanently — host Postgres owns 5432. This is in
 
 ---
 
-## P8 Setup
+## P8 Complete — Findings
 
-**RAGAS metrics to implement:**
-- **Faithfulness** — atomic claim extraction vs. retrieved contexts. Catches Finding 3.
-- **Answer relevance** — does the answer address the question.
-- **Context precision / recall** — did retrieval surface the right chunks. Catches Finding A vocabulary mismatch (low recall: 1.25.x pathway not retrieved).
+**Harness:** `src/clinical_platform/eval.py` + `data/eval_questions.json` + `requirements-eval.txt`. Baseline CSV in `data/ragas_scores/` (contexts column dropped — NICE © copyright). Ground truths authored from observed chunk text only; conditional linking §1.25.1 (DPP-4) to §1.25.2 (SU/pio/insulin) verified against PDF pages 104–105.
 
-**What it consumes:** `(question, retrieved_contexts, generated_answer)` triples — pipeline already produces these, just needs logging.
+**Test set (4 questions):**
 
-**Scope:** light harness over a handful of curated Q/A pairs (include the diabetes dual-therapy question deliberately). Log a score table. Wire into the Airflow DAG. Do not gold-plate.
+| ID | Phrasing | Purpose |
+|---|---|---|
+| Q_P7 | Clinical vocab "dual therapy / third agent" | Vocab-mismatch failure — fabrication case |
+| Q2 | Guideline vocab "SGLT-2 / individualised glycaemic targets" | Clean positive anchor (different topic) |
+| Q3a | Guideline vocab "further medicines / no relevant comorbidity" | Vocab contrast — retrieves on-topic |
+| Q3b | Clinical vocab "third agent / dual therapy" | Vocab contrast — same GT, different surface phrasing |
+
+**Baseline scores:**
+
+| Metric | Aggregate | Q_P7 | Q2 | Q3a | Q3b |
+|---|---|---|---|---|---|
+| faithfulness | 0.867 | 1.000 | 1.000 | 0.667 | 0.800 |
+| answer_relevancy | 0.900 | 0.786 | 0.978 | 0.910 | 0.928 |
+| context_precision | 0.500 | 0.000 | 1.000 | 1.000 | 0.000 |
+| context_recall | 0.917 | 1.000 | 1.000 | 1.000 | 0.667 |
+
+**Findings from baseline run:**
+
+**Finding P8-1 — Precision is valid rank-weighted AP (confirmed empirically).** Interleaved mixed-context test (on/off/on/off/on order) returned 0.7556, matching closed-form AP exactly ((1.0 + 0.667 + 0.6) / 3). Binary values in main run reflect uniform per-question topic relevance — all 5 retrieved chunks for Q_P7/Q3b were off-topic, all 5 for Q3a were on-topic. No metric collapse.
+
+**Finding P8-2 — Precision is the cleaner vocab-mismatch signal.** Q_P7 precision = 0.0 and Q3b precision = 0.0: clinical-vocab questions retrieve uniformly off-topic chunk sets (HbA1c monitoring, metformin alternatives). Q3a precision ≈ 1.0: guideline-vocab question retrieves on-topic set. Q2 precision ≈ 1.0 but is the clean anchor on a different topic (SGLT-2 continuation) — not part of the vocab experiment. The vocab contrast is Q3a vs Q3b.
+
+**Finding P8-3 — Recall directionally confirms the vocab contrast (magnitude soft).** Q3a context_recall > Q3b context_recall (1.0 vs 0.667), consistent with the vocabulary hypothesis. Magnitude is treated as an upper bound — same-model judge inflation (P8-4) affects recall. The precision split (1.0 vs 0.0) is the validated signal; recall corroborates direction only.
+
+**Finding P8-4 — Lenient same-model judge inflates both recall and faithfulness.** Q_P7 recall = 1.0 is over-attributed: the judge (GPT-4o) found "DPP-4 inhibitor" in the retrieved contexts and credited the ground-truth claim, without distinguishing the §1.25.1 no-comorbidity scenario from the metformin-contraindication scenario where DPP-4 also appears. Mechanism: when judge and generator are the same model, the judge over-credits paraphrases it would itself produce.
+
+**Finding P8-5 — The P7 fabrication reproduced; faithfulness=1.0 is a judge error.** The Q_P7 generated answer reads: *"a third agent should be added to intensify treatment."* The dual→triple bridge is present. faithfulness=1.0 is a judge error: GPT-4o accepted "add a third agent to intensify" as a faithful paraphrase of "intensify medicines" from the retrieved chunk. This is consistent with P8-4 — the lenient judge inflated faithfulness by the same mechanism it inflated recall. The fabrication is retrieval-dependent (reproduced here; grounding available but not binding at temperature=0) and the faithfulness metric did not catch it. Reading the generated answer is the only reliable check when judge=generator.
+
+**Finding P8-6 — Bold-heading extraction artifact (Silver backlog).** PDF extractor double-renders bold subheadings throughout the corpus ("PPeeooppllee" for "People"). Degrades embedding quality on rationale-section chunks. Fix: targeted normaliser detecting fully-doubled tokens at parse time — not a global double-letter strip, not a diagram-extraction rewrite. Low priority; out of P8 scope.
+
+**Finding P8-7 — Embedding dilution / pointer-outranks-content (retrieval backlog).** §1.13.1 first-line no-comorbidity recommendation ("offer metformin + SGLT-2") exists in chunk 12, clean text. Chunk 12's embedding is dominated by ~400 words of preamble before §1.13.1 appears. Result: chunk 13 (the navigation pointer to §1.13) outranks chunk 12 for a direct question about first-line treatment. Distinct mechanism from vocabulary mismatch — content present, embedding diluted by co-located preamble.
+
+**P8 open items (carry to P9):**
+- DAG: replace `run_ragas_eval` EmptyOperator with real PythonOperator call to `eval.run()`
+- `requirements-dev.txt`: pin ruff + black to match CI versions (open from P7)
+- Auto Loader `pathGlobFilter "*.pdf"` — stop manifest CSV at source (P7 Finding 1)
+- Confirm Bronze MERGE `ON` clause idempotency (carries from P7)
 
 ---
 
