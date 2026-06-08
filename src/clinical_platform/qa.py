@@ -17,6 +17,7 @@ class Citation:
     guideline_version: str
     chunk_index: int
     similarity: float
+    chunk_text: str = ""
 
 
 @dataclass
@@ -69,6 +70,7 @@ def ask(question: str, top_k: int = 5) -> Answer:
             guideline_version=c["guideline_version"],
             chunk_index=c["chunk_index"],
             similarity=round(c["similarity"], 4),
+            chunk_text=c["chunk_text"],
         )
         for c in chunks
     ]

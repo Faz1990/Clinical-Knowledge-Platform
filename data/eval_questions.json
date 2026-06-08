@@ -1,0 +1,26 @@
+[
+  {
+    "id": "Q_P7",
+    "label": "vocab-mismatch failure — expects degraded faithfulness; context_recall < Q3a (retrieved targets section, not escalation guidance)",
+    "question": "What HbA1c target is recommended for adults with type 2 diabetes on dual therapy, and when should a third agent be added?",
+    "ground_truth": "For adults with type 2 diabetes and no relevant comorbidity who need further medicines to reach their individualised glycaemic targets, a DPP-4 inhibitor is the first choice. If a DPP-4 inhibitor is not effective or tolerated, a sulfonylurea or pioglitazone should be considered. Insulin-based treatment is reserved for specific scenarios such as managing acute hyperglycaemia."
+  },
+  {
+    "id": "Q2",
+    "label": "clean positive — expects high faithfulness + high context_recall",
+    "question": "Should SGLT-2 inhibitors be continued if they do not help a person with type 2 diabetes reach their individualised glycaemic targets?",
+    "ground_truth": "SGLT-2 inhibitors should be continued even if they do not help the person reach their individualised glycaemic targets, because they provide cardiovascular or renal benefits beyond glycaemic control."
+  },
+  {
+    "id": "Q3a",
+    "label": "guideline vocab — context_recall > Q3b (vocab-driven difference, not absolute high/low)",
+    "question": "What further medicines should be added when initial therapy fails to reach glycaemic targets in adults with type 2 diabetes and no relevant comorbidity?",
+    "ground_truth": "For adults with type 2 diabetes and no relevant comorbidity who need further medicines to reach their individualised glycaemic targets, a DPP-4 inhibitor is the first choice. If a DPP-4 inhibitor is not effective or tolerated, a sulfonylurea or pioglitazone should be considered. Insulin-based treatment is reserved for specific scenarios such as managing acute hyperglycaemia."
+  },
+  {
+    "id": "Q3b",
+    "label": "clinical vocab contrast — context_recall < Q3a, controlled vocab-mismatch experiment (same correct answer, different surface phrasing)",
+    "question": "When should a third agent be added for a patient with type 2 diabetes on dual therapy who has not reached their HbA1c target?",
+    "ground_truth": "For adults with type 2 diabetes and no relevant comorbidity who need further medicines to reach their individualised glycaemic targets, a DPP-4 inhibitor is the first choice. If a DPP-4 inhibitor is not effective or tolerated, a sulfonylurea or pioglitazone should be considered. Insulin-based treatment is reserved for specific scenarios such as managing acute hyperglycaemia."
+  }
+]
