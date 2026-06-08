@@ -107,9 +107,13 @@ def _print_table(scores) -> None:
     print("-------------------------------------------------------------------")
     df = scores.to_pandas()
     metric_cols = [
-        c for c in [
-            "question", "faithfulness", "answer_relevancy",
-            "context_precision", "context_recall",
+        c
+        for c in [
+            "question",
+            "faithfulness",
+            "answer_relevancy",
+            "context_precision",
+            "context_recall",
         ]
         if c in df.columns
     ]
