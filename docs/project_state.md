@@ -1,17 +1,17 @@
 # Project State — Clinical Knowledge Platform
 
-**Last updated:** 2026-06-06
-**Current phase:** P8 — RAGAS eval harness
+**Last updated:** 2026-06-12
+**Current phase:** P10 — Silent-degradation postmortem
 
 ---
 
 ## Current Objective
 
-Build the RAGAS eval harness: log `(question, retrieved_contexts, generated_answer)` triples, run faithfulness / answer-relevancy / context-precision / context-recall, output a baseline score table from a DAG run.
+Induce and document silent RAG degradation: re-embed a targeted chunk subset with a different model, measure the precision drop via `eval.run()`, write the postmortem doc, and update `project_state.md` with the before/after curve.
 
-Proof artifact: baseline RAGAS score table logged from a DAG run.
+Proof artifact: before/after RAGAS degradation curve (precision drop) + postmortem doc.
 
-**The closing-the-loop story:** P7 caught a faithfulness failure manually (Finding 3). P8 turns that one-off catch into an automated gate — faithfulness metric flags the unsupported claim; context recall flags the retrieval miss that caused it.
+**The closing-the-loop story:** P9 built the automated eval gate. P10 proves the gate catches the one failure mode that doesn't crash the system — embedding model drift causes silent retrieval degradation. Freshness alert is structurally blind to this (re-embedding updates `embedded_at`, so freshness reads *fresh*); only the eval signal catches it. That is the "eval-as-infrastructure" argument demonstrated rather than asserted.
 
 ---
 
@@ -117,17 +117,103 @@ pgvector runs on `5433:5432` permanently — host Postgres owns 5432. This is in
 
 **Finding P8-4 — Lenient same-model judge inflates both recall and faithfulness.** Q_P7 recall = 1.0 is over-attributed: the judge (GPT-4o) found "DPP-4 inhibitor" in the retrieved contexts and credited the ground-truth claim, without distinguishing the §1.25.1 no-comorbidity scenario from the metformin-contraindication scenario where DPP-4 also appears. Mechanism: when judge and generator are the same model, the judge over-credits paraphrases it would itself produce.
 
-**Finding P8-5 — The P7 fabrication reproduced; faithfulness=1.0 is a judge error.** The Q_P7 generated answer reads: *"a third agent should be added to intensify treatment."* The dual→triple bridge is present. faithfulness=1.0 is a judge error: GPT-4o accepted "add a third agent to intensify" as a faithful paraphrase of "intensify medicines" from the retrieved chunk. This is consistent with P8-4 — the lenient judge inflated faithfulness by the same mechanism it inflated recall. The fabrication is retrieval-dependent (reproduced here; grounding available but not binding at temperature=0) and the faithfulness metric did not catch it. Reading the generated answer is the only reliable check when judge=generator.
+**Finding P8-5 — CLOSED (2026-06-12, P10 step 7). Judge leniency confirmed; faithfulness=1.0 is a judge error. Pre-registered prediction held.**
+
+Q_P7 answer: *"the recommended HbA1c target is 53 mmol/mol (7.0%). If HbA1c levels are not adequately controlled and rise to 58 mmol/mol (7.5%) or higher, a third agent should be added to intensify treatment."*
+
+Retrieved chunks (the exact evidence the judge scored against, post-restore — P8 conditions reconstructed):
+- Chunk 1 (sim=0.670): HbA1c monitoring *frequency* and IFCC calibration [NG28] — not targets, not escalation
+- Chunk 2 (sim=0.596): Relaxing targets for older/frailer patients [NG28] — nearest keyword is *"intensive management would not be appropriate"* — argues the opposite of the answer's bridge
+- Chunk 3 (sim=0.573): Tirzepatide pricing [TA924] — entirely off-topic
+- Chunk 4 (sim=0.571): Insulin adverse-event scenarios [NG28] — off-topic for the bridge
+- Chunk 5 (sim=0.565): Insulin initiation (continue metformin, stop other agents) [NG28] — off-topic
+
+Neither the 53/58 thresholds nor the dual→third-agent rule appears in any chunk. The numbers are real NICE values but came from GPT-4o's parametric knowledge, not the retrieved context. The bridge is fabricated. The judge scored faithfulness=1.0 against chunks that do not support either the numbers or the clinical logic — and the nearest keyword occurrence (Chunk 2 "intensive management") argues the reverse.
+
+**P8-4 mechanism confirmed to extend to faithfulness:** same-model judge (GPT-4o) rewards the generator's plausible parametric output regardless of whether the context supports it. Recall inflation (P8-4) and faithfulness inflation (P8-5) share the same root cause.
+
+**Interview-grade finding:** faithfulness measures grounding-in-context, not truth. This answer is arguably correct in the world yet unfaithful to what was retrieved. The metric scored 1.0; reading the context shows no grounding. This is why eval discipline requires reading the context, not trusting the score — and it is what the platform was built to catch. Proof artifact: `evidence/p10_6_qp7_context_read.png`.
 
 **Finding P8-6 — Bold-heading extraction artifact (Silver backlog).** PDF extractor double-renders bold subheadings throughout the corpus ("PPeeooppllee" for "People"). Degrades embedding quality on rationale-section chunks. Fix: targeted normaliser detecting fully-doubled tokens at parse time — not a global double-letter strip, not a diagram-extraction rewrite. Low priority; out of P8 scope.
 
 **Finding P8-7 — Embedding dilution / pointer-outranks-content (retrieval backlog).** §1.13.1 first-line no-comorbidity recommendation ("offer metformin + SGLT-2") exists in chunk 12, clean text. Chunk 12's embedding is dominated by ~400 words of preamble before §1.13.1 appears. Result: chunk 13 (the navigation pointer to §1.13) outranks chunk 12 for a direct question about first-line treatment. Distinct mechanism from vocabulary mismatch — content present, embedding diluted by co-located preamble.
 
-**P8 open items (carry to P9):**
-- DAG: replace `run_ragas_eval` EmptyOperator with real PythonOperator call to `eval.run()`
+**P8 open items — resolved in P9:**
+- DAG: `run_ragas_eval` EmptyOperator → PythonOperator ✅ (2026-06-12)
+
+**P8 open items — carry to P10:**
 - `requirements-dev.txt`: pin ruff + black to match CI versions (open from P7)
 - Auto Loader `pathGlobFilter "*.pdf"` — stop manifest CSV at source (P7 Finding 1)
 - Confirm Bronze MERGE `ON` clause idempotency (carries from P7)
+- **P8-5 CLOSED — see Finding P8-5 above.** Judge leniency confirmed in P10 step 7 by direct context read. The `observability_report.py` footnote hedge was correctly written and stands.
+
+---
+
+## P9 Complete — What Was Built
+
+**Files:**
+- `src/clinical_platform/telemetry.py` — `get_index_built_ts()` (pgvector `MAX(embedded_at)`; epoch on empty table), `write_eval_telemetry()` (idempotent DELETE+INSERT, single multi-row commit per run)
+- `src/clinical_platform/eval.py` — per-question timing, `retrieval_mean_similarity` (mean cosine sim), positional concat with assert for RAGAS→perf join, returns `(dict, DataFrame)`
+- `airflow/dags/clinical_platform_pipeline.py` — `run_ragas_eval` + `publish_metrics` swapped from EmptyOperator; freshness uses `total_seconds() / 86400` (exact boundary); alert raises `AirflowException` so task goes red in UI
+- `notebooks/observability/01_retrieval_dashboard.py` — Databricks notebook, 4 panels from Delta table, P8 trust labels
+- `demo/observability_report.py` — local proof artifact (3 panels: precision trend, trust-labelled metrics, freshness)
+
+**Telemetry table:** `clinical_platform.gold.retrieval_telemetry`
+Schema: `ts, question, latency_ms, k, retrieval_mean_similarity, index_built_ts, eval_run_id, context_precision, context_recall`
+Note: column is `retrieval_mean_similarity` (mean cosine sim of retrieved chunks), NOT `citation_coverage` — different things.
+
+**Key P9 finding (load-bearing for P10):**
+Re-embedding updates `embedded_at` → freshness alert reads the index as *fresher than ever* while retrieval is silently broken. Freshness is structurally blind to model-version drift. Only the eval signal (`context_precision` drop) catches it. This is the argument for eval-as-infrastructure, demonstrated in P10.
+
+**Proof artifact:** `python demo/observability_report.py` with `FRESHNESS_TTL_DAYS=1` trips the alert (index is ~6d old at time of P10 session). Screenshot this as evidence.
+
+**P9 open items — carry to P10:**
+- `embed_chunks` EmptyOperator → real PythonOperator (deferred; not P9 critical path)
+- See also P8 open items above
+
+---
+
+## P10 Plan — Silent-Degradation Postmortem
+
+**Approach: Option A — real re-embedding with a different model (NOT synthetic noise)**
+Rationale: noise-corruption tests the detection path but poisons the narrative. "I added noise" isn't a production failure mode. "Embedding model version drift" is — it's already on the CV, it's the scenario the P3 prevention plan (signature validation, version pinning) guards against.
+
+**Model choice: `text-embedding-ada-002` (1536-dim)**
+- DO NOT use `text-embedding-3-large` at default settings → 3072-dim vs 1536-dim index → pgvector errors loudly. That's a crash, not silent degradation.
+- `ada-002` is 1536-dim (same as `text-embedding-3-small` index). Cosine similarity computes, means nothing. That's the silent part.
+- Alternative: `text-embedding-3-large` with `dimensions=1536` also works.
+
+**Targeted subset, not random:**
+- Re-embed only the chunks currently serving Q2 and Q3a's precision-1.0 retrieval sets (top-k from the P8 baseline CSV).
+- Why: a random subset may miss the eval questions' retrieval sets entirely → precision doesn't move → demo fails.
+- Expected result: aggregate precision drops from 0.500 toward 0.0–0.25. Q3a precision drops from 1.0. Q_P7 stays at 0.0 (already broken, unaffected).
+- Falsifier: if Q3a holds at 1.0 after re-embedding, the targeted subset missed its retrieval set.
+
+**Pre-flight checks (verified 2026-06-12):**
+- `store.py` `ON CONFLICT (chunk_id) DO UPDATE SET embedding = EXCLUDED.embedding, embedded_at = NOW()` — upsert updates, not skips. Both `induce` and `restore` will write. ✅
+- `eval.py` save path: `ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")` then `SCORES_DIR / f"baseline_{ts}.csv"` — `ts` is generated per `run()` call, so each eval run writes a new file. ✅
+
+**Build steps:**
+0. Create `text-embedding-ada-002` deployment in `aoai-clinical-platform-dev` (UK South). Per cost rule: delete at step 8. It almost certainly doesn't exist right now.
+1. Snapshot affected rows: `python demo/p10_induce_degradation.py snapshot`.
+2. **Back up the baseline before running eval:** `cp data/ragas_scores/baseline_20260607T004856Z.csv data/ragas_scores/_backup_p8_baseline.csv`. Eval writes a new timestamped file per run (verified from source), but the P8 baseline is irreplaceable — one command of insurance.
+3. Re-embed Q2+Q3a top-k chunk_ids: `python demo/p10_induce_degradation.py induce --model text-embedding-ada-002`.
+4. Run `python -m clinical_platform.eval` → new `baseline_<ts>.csv` appears alongside the P8 baseline. **Gate:** precision must be visibly lower than 0.500, and specifically Q3a < 1.0 with Q_P7 still 0.0. If aggregate precision is unchanged at 0.500, stop — induce no-op'd. Do not proceed; check the write landed before anything else.
+5. `python demo/observability_report.py` → Panel 1 shows the precision drop; Panel 3 shows FRESH (freshness blindness in the same screenshot). **Capture this screenshot before touching restore** — step 6 overwrites the degraded index state that produces this artifact. Re-inducing to recover a missed screenshot is unnecessary work.
+6. Restore: `python demo/p10_induce_degradation.py restore`. The script self-verifies the write by re-fetching one chunk's embedding from pgvector and comparing to the snapshot — exits non-zero if the upsert no-op'd.
+7. **Verify recovery + close P8-5:** re-run `python -m clinical_platform.eval`. Precision must return to ~0.500 — without this, "restored" is an assertion. While reading output, call `ask()` interactively for Q_P7 and read the retrieved chunks alongside the generated answer. Answer text ("a third agent should be added to intensify treatment") is confirmed from the baseline CSV; the retrieved chunk vocabulary is not — contexts column was dropped. Seeing the chunks here closes P8-5 properly: if "intensify medicines" is in the context, the judge may have been correct; if not, faithfulness=1.0 is a confirmed judge error and the trust labels in `observability_report.py` need updating. **Pre-registered prediction:** P8-2 established Q_P7's retrieved set was uniformly off-topic (HbA1c monitoring, metformin alternatives). If those chunks don't contain dual→third-agent framing, the judge had no grounding basis for faithfulness=1.0 → confirmed judge leniency, extending P8-4 from recall to faithfulness. **Sanity check for restore validity:** verify the retrieved set for Q_P7 matches P8-2's off-topic description. If it looks different, the index isn't at baseline state — restore failed, and the recovery verification in this same step has also failed.
+8. Delete `ada-002` deployment from Azure OpenAI (cost hygiene).
+9. Write the postmortem doc.
+
+**Expected magnitude:** Q3a precision drops from 1.0 to some value < 1.0, not necessarily 0.0. Re-embedding the targeted chunks displaces them; other chunks rise into top-5, and if any are incidentally on-topic Q3a lands between 0 and 1. Falsifier: Q3a < 1.0 and Q_P7 unchanged at 0.0. Don't pre-commit the postmortem to "precision collapsed to zero."
+
+**Freshness blindness (postmortem headline):** Both `induce` and `restore` call `upsert_chunks`, which sets `embedded_at = NOW()` on conflict. The freshness alert reads FRESH throughout the entire incident — during active degradation and after recovery. The incident is invisible to P9's alert from start to finish. Only the eval signal detects degradation; only the eval signal confirms recovery. That is the eval-as-infrastructure argument demonstrated rather than asserted.
+
+**Postmortem must include:**
+- Before/after precision table (Q_P7, Q2, Q3a, Q3b)
+- Detection-gap finding: freshness alert shows *green* during active degradation (embedded_at was just updated)
+- Eval gate catches what freshness cannot
+- Resolution: restore index + add model_version column + add version-pinning to embed pipeline
 
 ---
 
