@@ -9,7 +9,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
-
 from datasets import Dataset
 from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings
 from ragas import evaluate
@@ -86,12 +85,14 @@ def run(
         records["answer"].append(result.answer)
         records["contexts"].append([c.chunk_text for c in result.citations])
         records["ground_truth"].append(pair["ground_truth"])
-        perf_records.append({
-            "question": pair["question"],
-            "latency_ms": latency_ms,
-            "k": len(result.citations),
-            "retrieval_mean_similarity": round(mean_sim, 4),
-        })
+        perf_records.append(
+            {
+                "question": pair["question"],
+                "latency_ms": latency_ms,
+                "k": len(result.citations),
+                "retrieval_mean_similarity": round(mean_sim, 4),
+            }
+        )
         print(
             f"  [{pair['id']}] {len(result.citations)} chunks in {latency_ms}ms "
             f"(mean_sim={mean_sim:.3f})"
@@ -128,9 +129,9 @@ def run(
     # Dataset.from_dict preserves that order, so row i in ragas_df matches
     # row i in perf_records. The assert catches any future divergence.
     ragas_df = scores.to_pandas()
-    assert len(ragas_df) == len(perf_records), (
-        f"RAGAS/perf row count mismatch: {len(ragas_df)} vs {len(perf_records)}"
-    )
+    assert len(ragas_df) == len(
+        perf_records
+    ), f"RAGAS/perf row count mismatch: {len(ragas_df)} vs {len(perf_records)}"
     per_q_df = pd.concat(
         [
             pd.DataFrame(perf_records).reset_index(drop=True),

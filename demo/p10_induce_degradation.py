@@ -87,7 +87,8 @@ def _fetch_rows_by_chunk_ids(chunk_ids: list[str]) -> list[dict]:
             rows = []
             for row in cur.fetchall():
                 r = dict(row)
-                r["embedding"] = [float(x) for x in r["embedding"]]  # numpy float32 → Python float for JSON
+                # numpy float32 → Python float for JSON serialisation
+                r["embedding"] = [float(x) for x in r["embedding"]]
                 rows.append(r)
         return rows
     finally:
@@ -192,7 +193,10 @@ def cmd_restore() -> None:
     ok = len(check) == len(orig) and all(abs(a - b) < 1e-6 for a, b in zip(check[:8], orig[:8]))
     print(f"Restore write verified against pgvector: {ok}")
     if not ok:
-        print("FAIL: re-fetched embedding != snapshot — upsert likely DO NOTHING. Recovery NOT demonstrated.")
+        print(
+            "FAIL: re-fetched embedding != snapshot — upsert likely DO NOTHING."
+            " Recovery NOT demonstrated."
+        )
         sys.exit(1)
 
     print(f"Restored {written} chunks. Original 3-small embeddings verified in pgvector.")

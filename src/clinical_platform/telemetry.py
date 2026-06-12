@@ -69,7 +69,7 @@ def get_index_built_ts() -> datetime:
 
 def write_eval_telemetry(
     eval_run_id: str,
-    per_q_df: "pd.DataFrame",
+    per_q_df: pd.DataFrame,
     index_built_ts: datetime,
 ) -> None:
     """Write per-question eval rows to clinical_platform.gold.retrieval_telemetry.
@@ -102,17 +102,19 @@ def write_eval_telemetry(
 
     rows_params = []
     for _, row in per_q_df.iterrows():
-        rows_params.append((
-            now,
-            str(row["question"]),
-            int(row["latency_ms"]),
-            int(row["k"]),
-            _float_or_none(row.get("retrieval_mean_similarity")),
-            index_built_ts,
-            eval_run_id,
-            _float_or_none(row.get("context_precision")),
-            _float_or_none(row.get("context_recall")),
-        ))
+        rows_params.append(
+            (
+                now,
+                str(row["question"]),
+                int(row["latency_ms"]),
+                int(row["k"]),
+                _float_or_none(row.get("retrieval_mean_similarity")),
+                index_built_ts,
+                eval_run_id,
+                _float_or_none(row.get("context_precision")),
+                _float_or_none(row.get("context_recall")),
+            )
+        )
 
     conn = dbsql.connect(server_hostname=host, http_path=http_path, access_token=token)
     try:
@@ -137,6 +139,9 @@ def write_eval_telemetry(
             flat_params,
         )
 
-        print(f"Telemetry: {len(rows_params)} rows -> {_TELEMETRY_TABLE} (eval_run_id={eval_run_id})")
+        print(
+            f"Telemetry: {len(rows_params)} rows -> {_TELEMETRY_TABLE}"
+            f" (eval_run_id={eval_run_id})"
+        )
     finally:
         conn.close()

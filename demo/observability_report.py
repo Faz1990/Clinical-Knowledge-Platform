@@ -62,14 +62,24 @@ def _load_runs() -> list[dict]:
     for path in csv_files:
         df = pd.read_csv(path)
         ts_str = path.stem.replace("baseline_", "")
-        runs.append({
-            "run_ts": ts_str,
-            "n": len(df),
-            "context_precision": df["context_precision"].mean() if "context_precision" in df.columns else None,
-            "context_recall": df["context_recall"].mean() if "context_recall" in df.columns else None,
-            "faithfulness": df["faithfulness"].mean() if "faithfulness" in df.columns else None,
-            "answer_relevancy": df["answer_relevancy"].mean() if "answer_relevancy" in df.columns else None,
-        })
+        runs.append(
+            {
+                "run_ts": ts_str,
+                "n": len(df),
+                "context_precision": (
+                    df["context_precision"].mean() if "context_precision" in df.columns else None
+                ),
+                "context_recall": (
+                    df["context_recall"].mean() if "context_recall" in df.columns else None
+                ),
+                "faithfulness": (
+                    df["faithfulness"].mean() if "faithfulness" in df.columns else None
+                ),
+                "answer_relevancy": (
+                    df["answer_relevancy"].mean() if "answer_relevancy" in df.columns else None
+                ),
+            }
+        )
     return runs
 
 
@@ -84,7 +94,11 @@ def _print_precision_trend(runs: list[dict]) -> None:
     baseline = _P8_BASELINE["context_precision"]
     for r in runs:
         p = r["context_precision"]
-        delta = f"{round(p - baseline, 3):+.3f}".replace("-0.000", "+0.000") if p is not None else "      n/a"
+        delta = (
+            f"{round(p - baseline, 3):+.3f}".replace("-0.000", "+0.000")
+            if p is not None
+            else "      n/a"
+        )
         print(f"  {r['run_ts']:23s}  {_fmt(p):>9}  {delta:>11}  {r['n']:>3}")
     if len(runs) == 1:
         print("  (single baseline point — delta 0 is expected; trend grows on next eval run)")
@@ -126,7 +140,7 @@ def _print_freshness() -> None:
     elif age_days > FRESHNESS_TTL_DAYS:
         print(f"  [FRESHNESS ALERT] Index is {age_days:.1f}d old (TTL={FRESHNESS_TTL_DAYS}d).")
         print(f"  Last built : {index_built_ts.isoformat()}")
-        print(f"  Status     : TRIPPED — run embed_chunks to re-index.")
+        print("  Status     : TRIPPED — run embed_chunks to re-index.")
     else:
         print(f"  [Freshness OK] Index is {age_days:.1f}d old (TTL={FRESHNESS_TTL_DAYS}d).")
         print(f"  Last built : {index_built_ts.isoformat()}")
@@ -154,7 +168,8 @@ def main() -> None:
     _print_freshness()
 
     print(f"-- P8 baseline reference {'-'*49}")
-    print(f"  context_precision  {_P8_BASELINE['context_precision']:.3f}  (validated; primary signal)")
+    cp = _P8_BASELINE["context_precision"]
+    print(f"  context_precision  {cp:.3f}  (validated; primary signal)")
     print(f"  context_recall     {_P8_BASELINE['context_recall']:.3f}  (upper bound)")
     print(f"  faithfulness       {_P8_BASELINE['faithfulness']:.3f}  (upper bound)")
     print(f"  answer_relevancy   {_P8_BASELINE['answer_relevancy']:.3f}")
