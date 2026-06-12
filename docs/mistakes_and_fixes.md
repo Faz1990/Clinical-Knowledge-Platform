@@ -41,6 +41,11 @@ Wrote `SHOW GRANTS TO \`uuid\` ON CATALOG ...` in the UC grants notebook. The `G
 `databricks.yml` had `resources:` with comments underneath but no actual content. YAML parser sees a nil map and errors: `expected a map at "resources", found nil`. If a key has nothing under it, don't declare it.
 **Rule applied:** verify spec/schema before writing config files with optional blocks.
 
+### M-vfy-7 — Positional join without alignment guard (P9)
+`eval.py` built `perf_records` in the loop and planned to merge with `scores.to_pandas()` on the `question` column. A string merge silently misattributes precision to the wrong question if any question string appears twice or if RAGAS reorders rows. Both DataFrames are built from the same loop in the same order, and `Dataset.from_dict` preserves that order — so positional concat is correct. But the alignment assumption was implicit, not verified.
+**Fix:** positional `pd.concat([perf_df.reset_index(drop=True), ragas_df[cols].reset_index(drop=True)], axis=1)` with `assert len(ragas_df) == len(perf_records)` to catch any future divergence.
+**Rule applied:** when two structures must align positionally, assert the invariant explicitly rather than relying on order preservation being documented elsewhere.
+
 ---
 
 ## Pattern 2: Partial Fix Claimed as Complete
@@ -102,6 +107,46 @@ Three times in P8, an explanation was asserted without reading the source: (1) "
 ### Ground truth must be authored from observed chunk text, not recalled knowledge (P8)
 Initial Q3a/Q3b ground truth included a conditional ("if DPP-4 not suitable → SU/pio/insulin") that stitched two separate chunks without verifying the conditional was verbatim in either. The conditional turned out to be real (PDF pages 104–105 confirm the tiering), but the process was wrong — a plausible bridge was asserted before it was observed.
 **Rule:** every claim in a ground-truth reference answer must be traceable to a specific retrieved chunk. If the phrasing stitches two chunks, read both chunks and verify the linking conditional exists verbatim before writing it as ground truth.
+
+---
+
+## Pattern 5: Observability Code Needs the Same Correctness Discipline as the Pipeline It Monitors
+
+**Root cause behind:** M-obs-1, M-obs-2, M-obs-3, M-obs-4.
+
+**The failure mode:** telemetry and alerting code written quickly, without applying the same idempotency, boundary-condition, and signal-validity checks used for the pipeline itself. Result: the observability layer becomes its own source of silent corruption — duplicate rows skew the trend, a wrong fallback makes the alert blind to its worst case, truncated math fires late, and a log line masquerades as a gate.
+
+**Process rule:** treat telemetry writes as Delta ingestion (idempotency), treat alert boundaries as contract conditions (verify the math), and treat the alert output as a proof artifact (it must be visible and unambiguous).
+
+### M-obs-1 — `INSERT INTO` with no key → duplicates on Airflow retry (P9)
+Initial `write_eval_telemetry` used a per-row `INSERT INTO` loop with no deduplication. An Airflow retry (or a mid-loop crash followed by retry) would write duplicate rows for the same `eval_run_id`, skewing every aggregate computed from the table. The trend P10 depends on would be wrong from the first retry.
+**Fix:** DELETE WHERE eval_run_id = X, then single multi-row INSERT. Same discipline as Bronze MERGE — idempotency is not optional for append-only tables.
+**Consequence if missed:** the degradation curve in P10 double-counts retried runs; the postmortem's "before" baseline is inflated.
+
+### M-obs-2 — `get_index_built_ts()` returned `now()` when table is empty (P9)
+Initial fallback: `if result is None: return datetime.now(timezone.utc)`. An unbuilt index reads as *perfectly fresh* — the one state where the freshness alert most needs to fire, it silently passes.
+**Fix:** return epoch `datetime(1970, 1, 1, tzinfo=timezone.utc)`. Age = now() − epoch → always exceeds any reasonable TTL.
+**Rule:** a "no data" fallback for an alert signal should be the worst-case value, not the neutral one.
+
+### M-obs-3 — `timedelta.days` floors to integer; alert fires up to ~24h late (P9)
+`age_days = (now - index_built_ts).days` — `.days` is the integer floor of the timedelta. An index 7d 21h old with TTL=7: `age_days=7`, `7 > 7` is False → no trip. For the feature whose entire purpose is detecting staleness, firing a day late is a correctness defect.
+**Fix:** `(now - index_built_ts).total_seconds() / 86400` gives exact fractional days. Boundary is precise; format with `{:.1f}`.
+**Rule:** use `total_seconds()` for any timedelta boundary comparison; `.days` is for display, not logic.
+
+### M-obs-4 — Print-only alert is a log line, not a gate (P9)
+Initial `_publish_metrics` printed a message on freshness trip. A `print()` is buried in stdout; nothing in the Airflow UI signals failure; the "automated gate" narrative is undermined by the demo being "I ran a log grep."
+**Fix:** `raise AirflowException(...)` so the task goes red in the Airflow UI. The proof artifact is a failed task, not a grepped log line.
+**Rule:** an alert that doesn't cause an observable failure state in the system it monitors is documentation, not observability.
+
+---
+
+## Pattern 6: Open Items Asserted as Settled in Proof Artifacts
+
+### M-assert-1 — Footnote stated unverified outcome as fact (P9)
+The `demo/observability_report.py` footnote originally read: "faithfulness=1.0 for Q_P7 despite fabricated clinical logic (P8-5)." But P8-5's status was explicitly **open**: "confirm by reading the generated answer." The note asserted an unverified outcome (judge missed a fabrication) as settled, in the wrong direction, in a screenshot to be shown in an interview.
+**Correction:** "faithfulness=1.0 on Q_P7 is not independent evidence of grounding — a same-model judge would pass a fabricated answer too (P8-5, open; confirm by reading the generated answer). Precision is the validated signal."
+**Why it matters:** stating an open item as settled invites the interviewer to ask "how do you know it fabricated?" — a question you cannot yet answer. Stating it as open and explaining *why the score can't distinguish the two cases* is actually the stronger line.
+**Rule:** in any screenshot or artifact you will present: open items are open, not settled. The distinction between "I don't trust this score and here's why" vs "this score is wrong" is the difference between demonstrated rigour and an unsupported claim.
 
 ### Global git ignore (Windows) is invisible to WSL git (P6)
 `.claude/` and `CLAUDE.md` were excluded via `core.excludesFile` in the Windows git global config. WSL git is a separate install with its own `~/.gitconfig` — it has no knowledge of the Windows global exclude. Files ignored in PowerShell were re-staged by WSL `git add .`.

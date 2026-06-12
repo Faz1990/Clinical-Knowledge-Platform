@@ -23,6 +23,7 @@ import subprocess
 from datetime import datetime, timedelta
 
 import msal
+from airflow.exceptions import AirflowException
 from airflow.operators.empty import EmptyOperator
 from airflow.operators.python import PythonOperator
 from airflow.providers.databricks.operators.databricks import DatabricksSubmitRunOperator
@@ -69,6 +70,11 @@ SCHEMA_LOCATION = "abfss://autoloader-schema@stclinpldev.dfs.core.windows.net/"
 
 DBT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "dbt"))
 DBT_BIN = "/home/faz/dbt-venv/bin/dbt"  # dbt isolated in its own venv in WSL
+
+# clinical_platform package lives in src/ relative to repo root
+_SRC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "src"))
+
+FRESHNESS_TTL_DAYS: int = int(os.environ.get("FRESHNESS_TTL_DAYS", "7"))
 
 
 # ---------------------------------------------------------------------------
@@ -123,6 +129,64 @@ def _run_dbt_gold(**_) -> None:
             env=env,
             check=True,
         )
+
+
+# ---------------------------------------------------------------------------
+# P9: RAGAS eval + publish metrics
+# Both functions do lazy imports so Airflow doesn't fail to load the DAG if
+# eval/telemetry deps aren't installed in the scheduler environment.
+# ---------------------------------------------------------------------------
+def _run_ragas_eval(**_) -> None:
+    import sys
+    import uuid
+    from datetime import datetime, timezone
+
+    if _SRC_DIR not in sys.path:
+        sys.path.insert(0, _SRC_DIR)
+
+    from clinical_platform.eval import run as eval_run
+    from clinical_platform import telemetry
+
+    # Timestamp + 8 random hex chars guarantees uniqueness across runs and retries.
+    # DELETE WHERE eval_run_id = X clears only this run's failed partial rows,
+    # never rows from a different run.
+    eval_run_id = (
+        f"eval_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
+        f"_{uuid.uuid4().hex[:8]}"
+    )
+
+    index_built_ts = telemetry.get_index_built_ts()
+    scores, per_q_df = eval_run()
+    telemetry.write_eval_telemetry(eval_run_id, per_q_df, index_built_ts)
+    print(
+        f"Eval complete: run_id={eval_run_id} "
+        f"precision={scores['context_precision']:.3f} "
+        f"recall={scores['context_recall']:.3f}"
+    )
+
+
+def _publish_metrics(**_) -> None:
+    import sys
+    from datetime import datetime, timezone
+
+    if _SRC_DIR not in sys.path:
+        sys.path.insert(0, _SRC_DIR)
+
+    from clinical_platform import telemetry
+
+    index_built_ts = telemetry.get_index_built_ts()
+    # total_seconds() / 86400 gives exact fractional days; .days floors and fires up to 24h late
+    age_days = (datetime.now(timezone.utc) - index_built_ts).total_seconds() / 86400
+
+    if age_days > FRESHNESS_TTL_DAYS:
+        # Raise so the task goes red in the Airflow UI — a print-only alert is
+        # a log line; a failed task is the automated gate P9 exists to demonstrate.
+        raise AirflowException(
+            f"FRESHNESS ALERT: index is {age_days:.1f}d old (TTL={FRESHNESS_TTL_DAYS}d). "
+            f"Run embed_chunks to re-index."
+        )
+
+    print(f"Freshness OK: index is {age_days:.1f}d old (TTL={FRESHNESS_TTL_DAYS}d).")
 
 
 # ---------------------------------------------------------------------------
@@ -200,10 +264,17 @@ with DAG(
         retry_delay=timedelta(minutes=2),
     )
 
-    # P7/P9 stubs — full pipeline shape declared; filled in later phases
     embed_chunks = EmptyOperator(task_id="embed_chunks")
-    run_ragas_eval = EmptyOperator(task_id="run_ragas_eval")
-    publish_metrics = EmptyOperator(task_id="publish_metrics")
+
+    run_ragas_eval = PythonOperator(
+        task_id="run_ragas_eval",
+        python_callable=_run_ragas_eval,
+    )
+
+    publish_metrics = PythonOperator(
+        task_id="publish_metrics",
+        python_callable=_publish_metrics,
+    )
 
     (
         check_landing
