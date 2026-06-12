@@ -145,15 +145,14 @@ def _run_ragas_eval(**_) -> None:
     if _SRC_DIR not in sys.path:
         sys.path.insert(0, _SRC_DIR)
 
-    from clinical_platform.eval import run as eval_run
     from clinical_platform import telemetry
+    from clinical_platform.eval import run as eval_run
 
     # Timestamp + 8 random hex chars guarantees uniqueness across runs and retries.
     # DELETE WHERE eval_run_id = X clears only this run's failed partial rows,
     # never rows from a different run.
     eval_run_id = (
-        f"eval_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
-        f"_{uuid.uuid4().hex[:8]}"
+        f"eval_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}" f"_{uuid.uuid4().hex[:8]}"
     )
 
     index_built_ts = telemetry.get_index_built_ts()
