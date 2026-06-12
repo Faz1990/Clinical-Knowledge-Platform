@@ -85,7 +85,7 @@ Wrote "27/27 dbt tests pass" without checking the build output.
 
 ### Secret exposure and rotation (P6 setup)
 SP client secret appeared in a screenshot of `az ad sp create-for-rbac` output.
-**Fix:** rotated immediately via `az ad app credential reset`. New secret lives only in Key Vault `kv-clinpl-dev` (`databricks-cicd-sp-secret`) and gitignored local `.env`.
+**Fix:** rotated immediately via `az ad app credential reset`. New secret lives only in Key Vault `<key-vault-name>` (`databricks-cicd-sp-secret`) and gitignored local `.env`.
 **Rule:** never screenshot, paste into chat, or log a secret. If it touches a screen in a shareable context: rotate before anything else.
 
 ### Azure RBAC ≠ Unity Catalog (first surfaced P2, resurfaces every phase with a new SP or identity)

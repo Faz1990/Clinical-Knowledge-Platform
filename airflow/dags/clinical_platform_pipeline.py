@@ -58,15 +58,16 @@ def get_databricks_token() -> str:
 # If using direct upload: /Users/faisal1990@hotmail.co.uk/notebooks/...
 # Verify EXISTING_CLUSTER_ID is active; note: job cluster is the prod pattern.
 # ---------------------------------------------------------------------------
-DATABRICKS_HOST = "adb-7405614006245057.17.azuredatabricks.net"
-EXISTING_CLUSTER_ID = "0529-152429-s8benrb4"
+DATABRICKS_HOST = os.environ.get("DATABRICKS_HOST", "")
+EXISTING_CLUSTER_ID = os.environ.get("EXISTING_CLUSTER_ID", "")
 
 BRONZE_NOTEBOOK = "/Workspace/clinical-knowledge-platform/bronze/01_auto_loader_bronze"
 
 SILVER_NOTEBOOK = "/Workspace/clinical-knowledge-platform/silver/01_bronze_to_silver"
 
-SOURCE_PATH = "abfss://bronze-files@stclinpldev.dfs.core.windows.net/"
-SCHEMA_LOCATION = "abfss://autoloader-schema@stclinpldev.dfs.core.windows.net/"
+_STORAGE_ACCOUNT = os.environ.get("STORAGE_ACCOUNT", "")
+SOURCE_PATH = f"abfss://bronze-files@{_STORAGE_ACCOUNT}.dfs.core.windows.net/"
+SCHEMA_LOCATION = f"abfss://autoloader-schema@{_STORAGE_ACCOUNT}.dfs.core.windows.net/"
 
 DBT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "dbt"))
 DBT_BIN = "/home/faz/dbt-venv/bin/dbt"  # dbt isolated in its own venv in WSL
@@ -83,7 +84,7 @@ FRESHNESS_TTL_DAYS: int = int(os.environ.get("FRESHNESS_TTL_DAYS", "7"))
 # the Databricks token; this resource is Azure Storage, not Databricks).
 # BlobServiceClient needs .blob.core.windows.net; SOURCE_PATH/SCHEMA_LOCATION
 # stay on .dfs (abfss:// paths consumed by Spark — correct for that SDK).
-# Requires Storage Blob Data Reader on stclinpldev (data-plane RBAC — control-
+# Requires Storage Blob Data Reader on $STORAGE_ACCOUNT (data-plane RBAC — control-
 # plane Owner/Contributor is insufficient; 403 with correct code = missing grant).
 # ---------------------------------------------------------------------------
 def _files_in_landing() -> bool:
@@ -91,7 +92,7 @@ def _files_in_landing() -> bool:
     from azure.storage.blob import BlobServiceClient
 
     cred = DefaultAzureCredential()
-    client = BlobServiceClient("https://stclinpldev.blob.core.windows.net", credential=cred)
+    client = BlobServiceClient(f"https://{_STORAGE_ACCOUNT}.blob.core.windows.net", credential=cred)
     blobs = list(client.get_container_client("bronze-files").list_blobs())
     return len(blobs) > 0
 

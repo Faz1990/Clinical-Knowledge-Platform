@@ -194,7 +194,7 @@ Rationale: noise-corruption tests the detection path but poisons the narrative. 
 - `eval.py` save path: `ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")` then `SCORES_DIR / f"baseline_{ts}.csv"` — `ts` is generated per `run()` call, so each eval run writes a new file. ✅
 
 **Build steps:**
-0. Create `text-embedding-ada-002` deployment in `aoai-clinical-platform-dev` (UK South). Per cost rule: delete at step 8. It almost certainly doesn't exist right now.
+0. Create `text-embedding-ada-002` deployment in `<azure-openai-resource>` (UK South). Per cost rule: delete at step 8. It almost certainly doesn't exist right now.
 1. Snapshot affected rows: `python demo/p10_induce_degradation.py snapshot`.
 2. **Back up the baseline before running eval:** `cp data/ragas_scores/baseline_20260607T004856Z.csv data/ragas_scores/_backup_p8_baseline.csv`. Eval writes a new timestamped file per run (verified from source), but the P8 baseline is irreplaceable — one command of insurance.
 3. Re-embed Q2+Q3a top-k chunk_ids: `python demo/p10_induce_degradation.py induce --model text-embedding-ada-002`.
@@ -239,8 +239,8 @@ Rationale: noise-corruption tests the detection path but poisons the narrative. 
 | Key Vault | `<KEY_VAULT_NAME>` — secret: `<SECRET_NAME>` |
 | Storage account | `<STORAGE_ACCOUNT_NAME>` |
 | Airflow provider | `apache-airflow-providers-databricks==6.7.0` |
-| Azure OpenAI resource | `aoai-clinical-platform-dev` — UK South — manual (not Terraform) |
-| Azure OpenAI endpoint | `https://aoai-clinical-platform-dev.openai.azure.com/` |
+| Azure OpenAI resource | `<azure-openai-resource>` — UK South — manual (not Terraform) |
+| Azure OpenAI endpoint | `https://<azure-openai-resource>.openai.azure.com/` |
 | pgvector container | `clinical_pgvector` — port `5433:5432` |
 
 ---
