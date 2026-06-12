@@ -20,5 +20,5 @@ jobs:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          DATABRICKS_HOST: https://adb-7405614006245057.17.azuredatabricks.net
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
         run: databricks bundle deploy --target prod

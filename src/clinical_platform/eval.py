@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pandas as pd
 from datasets import Dataset
 from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings
 from ragas import evaluate
@@ -50,8 +52,13 @@ def _embeddings() -> LangchainEmbeddingsWrapper:
 def run(
     questions_path: Path = EVAL_QUESTIONS_PATH,
     save_csv: bool = True,
-) -> dict[str, float]:
-    """Run RAGAS eval over curated Q/A pairs. Returns aggregate scores dict."""
+) -> tuple[dict[str, float], pd.DataFrame]:
+    """Run RAGAS eval over curated Q/A pairs.
+
+    Returns (aggregate_scores, per_question_df).
+    per_question_df columns: question, latency_ms, k, retrieval_mean_similarity,
+    context_precision, context_recall — matches the telemetry table schema.
+    """
     pairs = json.loads(questions_path.read_text(encoding="utf-8"))
 
     records: dict[str, list] = {
@@ -60,15 +67,36 @@ def run(
         "contexts": [],
         "ground_truth": [],
     }
+    perf_records: list[dict] = []
 
     print(f"Running RAG pipeline over {len(pairs)} questions...")
     for pair in pairs:
+        t0 = time.monotonic()
         result = ask(pair["question"], top_k=5)
+        latency_ms = int((time.monotonic() - t0) * 1000)
+
+        mean_sim = (
+            sum(c.similarity for c in result.citations) / len(result.citations)
+            if result.citations
+            else 0.0
+        )
+
         records["question"].append(pair["question"])
         records["answer"].append(result.answer)
         records["contexts"].append([c.chunk_text for c in result.citations])
         records["ground_truth"].append(pair["ground_truth"])
-        print(f"  [{pair['id']}] retrieved {len(result.citations)} chunks")
+        perf_records.append(
+            {
+                "question": pair["question"],
+                "latency_ms": latency_ms,
+                "k": len(result.citations),
+                "retrieval_mean_similarity": round(mean_sim, 4),
+            }
+        )
+        print(
+            f"  [{pair['id']}] {len(result.citations)} chunks in {latency_ms}ms "
+            f"(mean_sim={mean_sim:.3f})"
+        )
 
     dataset = Dataset.from_dict(records)
 
@@ -90,12 +118,29 @@ def run(
 
     _print_table(scores)
 
-    return {
+    agg = {
         "faithfulness": scores["faithfulness"],
         "answer_relevancy": scores["answer_relevancy"],
         "context_precision": scores["context_precision"],
         "context_recall": scores["context_recall"],
     }
+
+    # Positional concat: both lists were built in the same loop order and
+    # Dataset.from_dict preserves that order, so row i in ragas_df matches
+    # row i in perf_records. The assert catches any future divergence.
+    ragas_df = scores.to_pandas()
+    assert len(ragas_df) == len(
+        perf_records
+    ), f"RAGAS/perf row count mismatch: {len(ragas_df)} vs {len(perf_records)}"
+    per_q_df = pd.concat(
+        [
+            pd.DataFrame(perf_records).reset_index(drop=True),
+            ragas_df[["context_precision", "context_recall"]].reset_index(drop=True),
+        ],
+        axis=1,
+    )
+
+    return agg, per_q_df
 
 
 def _print_table(scores) -> None:

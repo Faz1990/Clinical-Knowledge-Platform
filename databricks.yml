@@ -2,7 +2,7 @@ bundle:
   name: clinical-knowledge-platform
 
 workspace:
-  host: https://adb-7405614006245057.17.azuredatabricks.net
+  host: <databricks-workspace-url>    # e.g. https://adb-xxxx.17.azuredatabricks.net
 
 targets:
   dev:

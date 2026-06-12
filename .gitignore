@@ -20,6 +20,9 @@ __pycache__/
 .vscode/
 .idea/
 
+# P10 restore snapshot — derived, temporary; restore it before deleting
+data/p10_snapshot.json
+
 # OS
 .DS_Store
 Thumbs.db

@@ -1,6 +1,6 @@
 # Storage account name: alphanumeric only, max 24 chars
 locals {
-  storage_name = "stclinpl${var.environment}"  # e.g. stclinpldev (14 chars)
+  storage_name = "stclinpl${var.environment}"  # e.g. stclinpl<env> (14 chars, Azure limit)
 }
 
 resource "azurerm_storage_account" "adls" {
