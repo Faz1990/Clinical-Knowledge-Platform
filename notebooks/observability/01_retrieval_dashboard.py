@@ -113,6 +113,7 @@ else:
     # index_built_ts stored as UTC; make tz-aware for comparison
     if latest_index_ts.tzinfo is None:
         from datetime import timezone as _tz
+
         latest_index_ts = latest_index_ts.replace(tzinfo=_tz.utc)
     age_days = (now - latest_index_ts).total_seconds() / 86400
 
@@ -123,10 +124,7 @@ else:
             f"Re-index required — run embed_chunks."
         )
     else:
-        print(
-            f"[Freshness OK] Index is {age_days:.1f}d old "
-            f"(TTL={FRESHNESS_TTL_DAYS}d)."
-        )
+        print(f"[Freshness OK] Index is {age_days:.1f}d old " f"(TTL={FRESHNESS_TTL_DAYS}d).")
 
 # COMMAND ----------
 # MAGIC %md ### P8 baseline reference
