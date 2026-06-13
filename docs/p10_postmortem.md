@@ -69,7 +69,7 @@ The mechanism is structural, not coincidental. Examining the document hashes und
 
 This is intra-document segment shuffling: displacing the optimal segment of a guideline promotes a neighbouring segment from the same guideline. Because adjacent segments of a clinical guideline are topically identical, a topical-relevance metric (`context_precision`) cannot distinguish the corruption from a clean retrieval. The retrieval set looks different at the chunk level while being nearly identical at the document level.
 
-**Implication:** `context_precision` of 1.000 does not prove the intended chunks were retrieved. It proves the retrieved set was topically relevant. When the corpus has on-topic redundancy within source documents, embedding corruption can produce correct precision scores from a corrupted retrieval set. A chunk_id stability check — not a RAGAS metric — is required to detect this failure class.
+**Implication:** `context_precision` of 1.000 does not prove the intended chunks were retrieved. It proves the retrieved set was topically relevant. When the corpus has on-topic redundancy within source documents, embedding corruption can produce correct precision scores from a corrupted retrieval set. This failure class needs detection at two layers, neither of which is a RAGAS metric. A `model_version` column catches the cause (a different model wrote the row; Recommendation 1). A chunk_id stability check catches the symptom (the retrieval set changed; Recommendation 3). The eval signal alone is necessary but not sufficient.
 
 ### Finding 3 — faithfulness=1.0 confirmed as judge leniency (closes P8-5)
 
@@ -85,7 +85,7 @@ The 5 retrieved chunks at the time of scoring (post-restore, P8 conditions recon
 | 4 | 0.571 | Insulin adverse-event scenarios [NG28] |
 | 5 | 0.565 | Insulin initiation guidance [NG28] |
 
-Neither the 53/58 mmol/mol thresholds nor the dual→third-agent escalation logic appears in any retrieved chunk. The answer's numbers are real NICE values but came from GPT-4o's parametric knowledge, not the retrieved context. The clinical bridge was fabricated. The nearest keyword match (Chunk 2: "intensive management would not be appropriate") argues the opposite of the answer's claim. The RAGAS judge (GPT-4o) scored faithfulness=1.0 against this context.
+Neither the 53/58 mmol/mol thresholds nor the dual→third-agent escalation logic appears in any retrieved chunk. The answer's numbers are real NICE values, but since they appear in none of the retrieved chunks they must have come from GPT-4o's parametric knowledge rather than the retrieved context. The clinical bridge was fabricated. The nearest keyword match (Chunk 2: "intensive management would not be appropriate") argues the opposite of the answer's claim. The RAGAS judge (GPT-4o) scored faithfulness=1.0 against this context.
 
 **Note on P7 consistency:** P7's finding was "numbers grounded in NG28, clinical logic fabricated." In this run, neither the numbers nor the bridge was grounded in the retrieved context. Both findings are true: retrieval is query- and index-state-dependent, and the top-5 chunks differ across runs. In P7 a monitoring-threshold chunk happened to be retrieved; in this run it was not. The fabricated bridge is consistent across both runs; the grounding of the numbers is run-dependent.
 
