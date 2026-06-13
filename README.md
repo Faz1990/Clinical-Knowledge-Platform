@@ -10,6 +10,16 @@ The AI layer is the *consumer* of the data platform: its correctness depends on 
 
 ---
 
+## Why this project matters
+
+This is a governed data platform built to demonstrate data engineering judgement, not just tool usage. It is not a RAG demo.
+
+End to end on Azure and Databricks, it ingests, governs, validates, models, orchestrates, deploys, serves, evaluates, and monitors clinical guideline data, and documents the exact failure modes it catches. The three failure stories below are the point.
+
+**Relevant for:** Azure Data Engineer, Databricks Data Engineer, Analytics Engineer, AI/RAG Data Engineer, regulated data platform roles, and healthcare or public-sector data teams.
+
+---
+
 ## Architecture
 
 ```
@@ -38,14 +48,14 @@ CI/CD:         GitHub Actions (lint → pytest → dbt build → deploy → smok
 |---|---|
 | Cloud | Azure (ADLS Gen2, ADF, Azure OpenAI) |
 | Lakehouse | Databricks, Delta Lake, Unity Catalog |
-| Transforms | dbt (incremental merge, 4+ test types, custom test, lineage) |
+| Transforms | dbt (incremental merge, 4 built-in + 2 custom data tests, lineage) |
 | Orchestration | Apache Airflow (retries, backoff, SLAs, sensors) |
 | Vector store | pgvector on Postgres (deliberate trade-off over Azure AI Search) |
 | RAG | LangChain (thin glue layer) |
 | Eval | RAGAS |
 | CI/CD | GitHub Actions |
 | IaC | Terraform |
-| Linting | ruff / black |
+| Testing & lint | pytest (unit tests on contract + scope gates) · ruff · black |
 
 ---
 
