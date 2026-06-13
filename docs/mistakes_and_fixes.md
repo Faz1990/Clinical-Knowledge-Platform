@@ -148,7 +148,37 @@ The `demo/observability_report.py` footnote originally read: "faithfulness=1.0 f
 **Why it matters:** stating an open item as settled invites the interviewer to ask "how do you know it fabricated?" — a question you cannot yet answer. Stating it as open and explaining *why the score can't distinguish the two cases* is actually the stronger line.
 **Rule:** in any screenshot or artifact you will present: open items are open, not settled. The distinction between "I don't trust this score and here's why" vs "this score is wrong" is the difference between demonstrated rigour and an unsupported claim.
 
+### M-assert-2 — Same claim corrected in one doc, left wrong in the others (P10)
+P8-5 was prematurely written as "fabrication reproduced; faithfulness=1.0 is a judge error" in the `project_state.md` Finding body, while the open-items section of the same file still listed it as open. The conclusion was also unverified: it convicted the judge without reading the retrieved context. Separately, the "a chunk_id stability check is required to detect this" overclaim appeared in both a study-guide draft and the postmortem's Finding 2, naming one detector when the incident concluded two (`model_version` for the cause, chunk_id stability for the symptom). In each case fixing the claim in one place left it wrong elsewhere.
+**Fix:** when correcting a claim, grep every doc for the same claim and reconcile all occurrences in the same pass. Closed P8-5 against the actual context read (numbers and bridge absent from all 5 retrieved chunks); made Finding 2 name both detectors, consistent with its own recommendations.
+**Rule:** a derived or duplicated claim drifts from its corrected source unless you re-run the check on every copy. Treat docs like the index in P10: fixing the cause in one row does not fix the stale copies. This is the postmortem's own failure mode, applied to its documentation.
+
 ### Global git ignore (Windows) is invisible to WSL git (P6)
 `.claude/` and `CLAUDE.md` were excluded via `core.excludesFile` in the Windows git global config. WSL git is a separate install with its own `~/.gitconfig` — it has no knowledge of the Windows global exclude. Files ignored in PowerShell were re-staged by WSL `git add .`.
 **Fix:** `.git/info/exclude` lives inside the repo's `.git/` folder, shared by both shells on disk. Add exclusions there, not to a global config. Works in PowerShell and WSL identically, never pushed.
 **Rule:** global git config is per-install. Repo-local `.git/info/exclude` is per-repo and shell-agnostic.
+
+---
+
+## Pattern 7: The Experiment and Its Evidence Need the Pipeline's Rigour
+
+**Root cause behind:** M-p10-1, M-p10-2, M-p10-3.
+
+**The failure mode:** the induced-failure experiment (P10) and the screenshots that prove it were treated as throwaway, exempt from the idempotency, falsification, and provenance discipline applied to the pipeline. But the postmortem's credibility rests entirely on the experiment being sound and the evidence being real. A no-op write, a narrated-past falsifier, or a screenshot of a chat summary each silently invalidates the conclusion while looking fine.
+
+**Process rule:** the script that induces a failure is production code touching the real index. Verify its writes, honour its pre-registered falsifiers, and capture evidence from the program's own output, not from a description of it.
+
+### M-p10-1 — A load-bearing write inferred from a row count, not verified (P10)
+`upsert_chunks` could plausibly have been `ON CONFLICT DO NOTHING` (a normal choice for an idempotent ingestion path). If it were, both `induce` and `restore` would write nothing while `print(f"...{written} chunks")` reported a happy count, because `written` counts rows submitted, not rows modified. A no-op restore would then invalidate both the recovery verification and the P8-5 context read, with no signal distinguishing "restore failed" from "measurement failed."
+**Fix:** confirmed the clause is `DO UPDATE SET embedding = EXCLUDED.embedding` before running; added a `restore` self-check that re-fetches one chunk's embedding from pgvector and float-compares it to the snapshot, exiting non-zero on mismatch.
+**Rule:** when a write's success is load-bearing for a downstream claim, verify it at the data layer. A printed count is not evidence the write landed.
+
+### M-p10-2 — Pre-registered falsifier fired; first instinct was to narrate past it (P10)
+The plan pre-registered: "if Q3a holds at 1.0 after re-embedding, the targeted subset missed its retrieval set." Q3a held at 1.0. The first instinct was to substitute a new explanation ("other on-topic chunks rose into top-5") and wave the gate through, which is exactly the move the project exists to refuse.
+**Fix:** ran the deciding check before concluding anything: compared Q3a's degraded top-5 chunk_ids against the snapshot. Result was 0/5 overlap with 4/5 document overlap, which converted a potential bug into the strongest finding in the postmortem (precision is blind to intra-document segment shuffling).
+**Rule:** when a pre-registered falsifier fires, run the check that decides bug-versus-finding. Do not replace the falsifier with a fresh hypothesis that happens to save the result.
+
+### M-p10-3 — Evidence captured as the assistant's summary, not the program's output (P10)
+Screenshots were initially taken of the chat's paraphrase of results rather than the terminal. The freshness age then drifted between documents (a doc said "0.0d old" while the captured report read "0.2d"), the precise failure an interviewer catches by opening the artifact.
+**Fix:** re-captured every artifact from the program's own stdout (`p10_1` through `p10_6`), and reconciled the doc's figures to the captured numbers. Backed by the durable CSVs in `data/ragas_scores/`, from which every report regenerates.
+**Rule:** evidence is a picture of what the code printed, never a picture of the assistant describing what the code printed. If the two disagree, the program is right.
